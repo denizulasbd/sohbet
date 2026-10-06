@@ -136,7 +136,7 @@ const DELETE = tool('delete_event', 'Takvimden bir etkinliği siler; tekrarlayan
 const RULES = `Takvim araçların var (list_events, create_event, update_event, delete_event).
 - Kullanıcı bir ders, sınav, ödev, antrenman ya da öğün saatinin programına eklenmesini istediğinde ya da bir sınav/ödev tarihi bildirdiğinde create_event kullan. Sıradan sohbette kendiliğinden etkinlik oluşturma.
 - Göreli tarihleri ("yarın", "gelecek salı", "haftaya") yukarıdaki bugünün tarihine göre çöz ve YYYY-AA-GG olarak ver. Yıl söylenmediyse en yakın gelecek tarihi al.
-- Haftalık ders programı gibi tekrarlayan etkinlikleri TEK create_event çağrısıyla ekle: repeat "weekly", repeat_days ilgili günler (ör. pazartesi ve çarşamba → ["MO","WE"]), date ilk dersin günü.
+- Haftalık ders programı gibi tekrarlayan etkinlikleri TEK create_event çağrısıyla ekle: repeat "weekly", repeat_days ilgili günler (ör. pazartesi ve çarşamba → ["MO","WE"]), date ise bugünden itibaren bu günlerden EN YAKIN olanı (ör. bugün salıysa ve günler pazartesi-çarşamba ise yarınki çarşamba; gelecek haftanın pazartesisi değil).
 - Plan ya da program önerirken önce list_events ile ilgili aralığa bak; mevcut etkinliklerle, özellikle sınavlarla çakışan saat önerme.
 - Bir etkinliği değiştirmek ya da silmek için id değerini list_events sonucundan al; id uydurma.
 - Araç sonucu "kaydedildi" diyorsa kullanıcıya kısaca bildir. Kullanıcı reddettiyse hiçbir şey yazılmamıştır: kaydedilmiş gibi sunma ve istenmedikçe aynı çağrıyı yineleme.`
