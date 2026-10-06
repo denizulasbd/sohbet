@@ -43,7 +43,13 @@ function create({ items, mode, emit }) {
   const other = OTHER_NAME[mode] || OTHER_NAME.chat
   return {
     tools: [TOOL], maxRounds: 3,
-    rules: `search_memory aracın var: kullanıcının ${other} modunda kaydedilmiş bilgilerinde arar (ör. ${mode === 'coach' ? 'sınav tarihleri, ders programı' : 'antrenman günleri, günlük rutin'}). Diğer moddan gelen bir bilgiyi yalnızca mevcut soruya doğrudan katkı sağlıyorsa kullan; ilgisiz sorularda arama yapma ve bu bilgileri gereksiz yere anma.`,
+    // Model kendiliğinden diğer modu düşünmez; hangi isteklerde önce bakması gerektiği açıkça söylenir.
+    rules: `search_memory aracın var: kullanıcının ${other} modunda kaydedilmiş bilgilerinde arar.
+- ${mode === 'coach'
+      ? 'Antrenman planı, haftalık program, günlük plan ya da takvim önerisi istendiğinde plan yapmadan ÖNCE search_memory ile kullanıcının sınav, ödev ve ders yükünü kontrol et (ör. query: "sınav ödev ders programı") ve planı buna göre ayarla; yoğun haftalarda yükü hafiflet.'
+      : 'Çalışma programı, haftalık plan ya da zaman planlaması istendiğinde plan yapmadan ÖNCE search_memory ile kullanıcının antrenman günlerini ve günlük rutinini kontrol et (ör. query: "antrenman günleri rutin") ve planı buna göre ayarla.'}
+- Bunun dışında yalnızca mevcut soru o bilgiye gerçekten ihtiyaç duyuyorsa ara; ilgisiz sorularda arama yapma.
+- Diğer moddan gelen bir bilgiyi yalnızca mevcut soruya doğrudan katkı sağlıyorsa kullan; gereksiz yere anma.`,
     has: (name) => name === TOOL.name,
     async run(call) {
       const query = String(call.input?.query ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)
