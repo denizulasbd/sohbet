@@ -12,11 +12,22 @@ export interface Note { id: string; title: string; body: string; pinned?: boolea
  *  düzenlemede oldText'in yerine geçecek metin; oldText notta tam bir kez geçer).
  *  pending: önizleme kartı onay bekliyor · saved: yazıldı (noteId; eklemede revId = önceki halin revizyonu) · undone: geri alındı.
  *  savedAt: notun yazıldığı andaki updatedAt değeri (sonradan elle değişti mi anlamak için). */
-export interface NoteOp { id: string; kind: 'create' | 'append' | 'edit'; oldText?: string; status: 'pending' | 'saved' | 'cancelled' | 'undone'; title: string; body: string; projectId?: string | null; noteId?: string; revId?: number; savedAt?: number; auto?: boolean; error?: string }
+/** target 'event': takvim önerisi (kind create | update | delete). event: yazılacak alanlar · eventId: hedef etkinlik · before: değişiklikten ya da silmeden önceki hali (geri alma). */
+export interface NoteOp { target?: 'note' | 'event'; event?: EventInput; eventId?: string; before?: CalEvent; id: string; kind: 'create' | 'append' | 'edit' | 'update' | 'delete'; oldText?: string; status: 'pending' | 'saved' | 'cancelled' | 'undone'; title: string; body: string; projectId?: string | null; noteId?: string; revId?: number; savedAt?: number; auto?: boolean; error?: string }
 /** Önizleme kartında kullanıcının son hali. */
 export interface NoteEdit { title: string; body: string; projectId: string | null }
 /** Uygulama bölümleri (kenar çubuğundaki seçici ve ana alan). Yeni bölüm eklemek için buraya ekleyin. */
-export type SbPage = 'chat' | 'notes' | 'projects'
+export type SbPage = 'chat' | 'notes' | 'projects' | 'calendar'
+// ---- takvim ----
+export type EventKind = 'ders' | 'sinav' | 'odev' | 'antrenman' | 'ogun' | 'diger'
+export type WeekDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU'
+/** days yalnızca haftalık tekrarda anlamlıdır (boşsa başlangıç gününün haftanın günü); until: son gün, YYYY-AA-GG. */
+export interface EventRepeat { freq: 'daily' | 'weekly'; days: WeekDay[]; until: string | null }
+/** startAt/endAt: yerel saatle epoch ms. allDay ise saat yok sayılır. Tekrarlayan etkinlik tek kayıttır; değişiklik tüm seriye uygulanır. */
+export interface EventInput { title: string; kind: EventKind; startAt: number; endAt: number | null; allDay: boolean; repeat: EventRepeat | null; projectId: string | null; notes: string | null }
+export interface CalEvent extends EventInput { id: string; createdBy: 'user' | 'ai'; createdAt: number }
+/** Etkinliğin takvimde görünen bir günü: at/until o günün başlangıcı ve bitişi. */
+export interface EventOcc extends CalEvent { at: number; until: number | null }
 export type ProjectKind = 'ders' | 'kisisel'
 export interface Project { id: string; name: string; kind: ProjectKind; createdAt: number; fileCount: number }
 export type FileStatus = 'queued' | 'processing' | 'ready' | 'error'
@@ -43,7 +54,7 @@ export interface SourceRef { n: number; sourceType: 'file' | 'note'; sourceId: s
  *  quotes: sağlayıcı konum bildirdiyse kaynağın dayandığı metin parçaları. Numaralar sohbet boyunca sabittir. */
 export interface WebRef { n: number; url: string; title: string; content: string; quotes?: string[] }
 /** Modelin proje içinde yaptığı bir arama, okuma, kaynak listeleme ya da belge özetleme; 'web': web araması (count: arama sayısı). count yoksa işlem sürüyor. */
-export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize' | 'memory'; text: string; count?: number }
+export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize' | 'memory' | 'calendar'; text: string; count?: number }
 /** projectId: mesajda @ ile seçilen proje (metne gömülmez); projectName gösterim için o anki adıdır. */
 /** web: bu cevapta gelen web kaynaklarının numaraları; webSearches/webCost: yapılan arama sayısı ve dolar karşılığı. */
 /** tokens/inTokens: cevabın çıkış ve giriş token sayısı (araç turları ve alt çağrılar dahil); cost: sağlayıcının bildirdiği dolar karşılığı (yalnızca OpenRouter). */
@@ -102,10 +113,17 @@ declare global {
       /** immediate: arama indeksi beklemeden güncellenir. */
       saveNotes(n: Note[], immediate?: boolean): Promise<void>
       /** Modelin not önerisine verilen karar; cevabı üreten araç döngüsü bununla devam eder. */
-      resolveNote(requestId: string, opId: string, result: { action: 'saved'; noteId: string; projectName: string; edited: boolean } | { action: 'cancel' } | { action: 'error'; message: string }): Promise<void>
+      resolveNote(requestId: string, opId: string, result: { action: 'saved'; noteId?: string; projectName?: string; edited?: boolean; eventId?: string } | { action: 'cancel' } | { action: 'error'; message: string }): Promise<void>
       /** Notun o anki halini saklar ("Geri al" için); revizyon numarasını döndürür. */
       addRevision(r: { noteId: string; title: string; body: string; reason: 'append' | 'edit'; chatId?: string }): Promise<number | null>
       getRevision(id: number): Promise<{ id: number; noteId: string; title: string; body: string; reason: string; createdAt: number } | null>
+      /** [from, to) aralığında görünen etkinlik günleri (tekrarlayanlar açılmış), başlangıca göre sıralı. */
+      listEvents(from: number, to: number): Promise<EventOcc[]>
+      createEvent(input: EventInput, createdBy?: 'user' | 'ai'): Promise<CalEvent>
+      updateEvent(id: string, input: Partial<EventInput>): Promise<CalEvent | null>
+      /** Siler ve silinen etkinliği döndürür (geri yüklemek için); etkinlik yoksa null. */
+      deleteEvent(id: string): Promise<CalEvent | null>
+      restoreEvent(snapshot: CalEvent): Promise<CalEvent | null>
       loadSettings(): Promise<Settings>
       saveSettings(s: Settings): Promise<void>
       clearKey(id: string): Promise<void>

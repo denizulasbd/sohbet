@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AddFilesResult, ArchiveFile, Note, Project, ProjectKind, QuizSummary, SearchHit, SourceRef } from '../types'
+import type { AddFilesResult, ArchiveFile, EventOcc, Note, Project, ProjectKind, QuizSummary, SearchHit, SourceRef } from '../types'
 import { isEmptyNote, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { snippet } from '../search'
 import { fmtScore, settingsLine } from '../quiz'
+import { addDays, dayLabel, kindLabel, startOfDay, timeLabel } from '../calendar'
 import { Back, Close, FileText, Folder, Plus, Quiz, Search, Trash } from './Icons'
 import { Reveal } from './Sidebar'
 import QuizSetup from './QuizSetup'
@@ -18,6 +19,8 @@ interface Props {
   providerId?: string; model?: string
   /** Quiz sonucundaki kaynak etiketi: dosya ilgili sayfada, not düzenleyicide açılır. */
   onOpenSource(s: SourceRef): void
+  /** Takvim değişince projeye bağlı etkinlikler yenilenir. */
+  calTick: number
 }
 
 const KINDS: { id: ProjectKind; label: string }[] = [{ id: 'ders', label: 'Ders' }, { id: 'kisisel', label: 'Kişisel proje' }]
@@ -32,7 +35,17 @@ function fmtSize(n: number) {
 }
 const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
 
-export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, onUpdate, onDelete, onNew, onOpenNote, onOpenFile, onFilesChanged, providerId, model, onOpenSource }: Props) {
+export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, onUpdate, onDelete, onNew, onOpenNote, onOpenFile, onFilesChanged, providerId, model, onOpenSource, calTick }: Props) {
+  // Projeye bağlı yaklaşan etkinlikler (sınav, ödev, ders): takvim koç modundadır, burada yalnızca gösterilir.
+  const [events, setEvents] = useState<EventOcc[]>([])
+  useEffect(() => {
+    setEvents([])
+    if (!project) return
+    let live = true
+    const today = startOfDay(Date.now())
+    window.api.listEvents(today, addDays(today, 180)).then((l) => { if (live) setEvents(l.filter((o) => o.projectId === project.id).slice(0, 8)) }).catch(() => {})
+    return () => { live = false }
+  }, [project?.id, calTick])
   const [files, setFiles] = useState<ArchiveFile[]>([])
   const [prog, setProg] = useState<Record<string, { page: number; total: number }>>({})
   const [ocr, setOcr] = useState<Record<string, { done: number; total: number; finished?: boolean; error?: string }>>({})
@@ -213,6 +226,19 @@ export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, on
                       <div className="pj-tx"><span className="pj-n" title={z.title}>{z.title}</span><span className="pj-s">{tinyDate(z.createdAt)} · {settingsLine(z.settings, z.questionCount)}</span></div>
                       {quizStatus(z)}
                       <button className="ib" aria-label={z.title + ' quiz\'ini sil'} title="Sil" onClick={(e) => { e.stopPropagation(); removeQuiz(z) }}><Trash size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {events.length > 0 && (
+              <section className="stack">
+                <span className="label gl">TAKVİM · YAKLAŞAN</span>
+                <div className="group">
+                  {events.map((o) => (
+                    <div key={o.id + o.at} className="frow pj-row">
+                      <div className="pj-tx"><span className="pj-n" title={o.title}>{o.title}</span><span className="pj-s">{kindLabel(o.kind)}{o.notes ? ' · ' + o.notes : ''}</span></div>
+                      <span className="grow" /><span className="pj-st">{dayLabel(o.at)} · {timeLabel(o)}</span>
                     </div>
                   ))}
                 </div>

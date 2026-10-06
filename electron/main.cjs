@@ -269,15 +269,17 @@ app.whenReady().then(() => {
       const noteTools = !coach && canTool
         ? require('./note-tools.cjs').create({ onUsage, session, sources, readNotes, provider, signal: ctrl.signal, emit, propose, projects: archive ? archive.projectNames() : [], autoCreate: !!s.notes?.autoCreate })
         : null
-      // Modele verilen uygulama araçları: not yazma (sohbet modu) + diğer modun hafızasında arama.
-      const notes = memoryTools.combine(noteTools, memTool)
+      // Takvim araçları iki modda da vardır; yazma önerileri not önerileriyle aynı onay hattından geçer.
+      const calTools = canTool && archive ? require('./calendar.cjs').createTools({ propose, emit, projects: archive.projectNames(), session, signal: ctrl.signal }) : null
+      // Modele verilen uygulama araçları: not yazma (sohbet modu) + takvim + diğer modun hafızasında arama.
+      const notes = memoryTools.combine(memoryTools.combine(noteTools, calTools), memTool)
       const go = (withWeb, withNotes) => {
         const system = [buildSystem(s, mode), withWeb ? WEB_RULES : '', withWeb && session ? WEB_PROJECT_RULES : ''].filter(Boolean).join('\n\n')
         const b = withWeb ? { ...base, onAnnotations } : base
         if (session) return knowledge.streamWithKnowledge({ session, base: { ...b, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) }, system, userText, emit, notes: withNotes ? notes : null })
-        // Proje seçili değilken: yalnızca create_note ve search_memory; araç döngüsü kısa tutulur.
+        // Proje seçili değilken: create_note, takvim ve search_memory; araç döngüsü kısa tutulur.
         return withNotes
-          ? streamWithTools({ ...b, system: system + '\n\n' + notes.rules, tools: notes.tools, maxRounds: 3, runTool: (call) => { started = true; return notes.run(call) }, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) })
+          ? streamWithTools({ ...b, system: system + '\n\n' + notes.rules, tools: notes.tools, maxRounds: calTools ? 6 : 3, runTool: (call) => { started = true; return notes.run(call) }, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) })
           : streamChat({ ...b, system, ...(withWeb ? { serverTools: webSearch.toolsFor(0) } : {}) })
       }
       // Araç yüzünden reddedilen istek (henüz hiçbir şey akmadan 4xx) sırayla sadeleştirilerek yeniden denenir:

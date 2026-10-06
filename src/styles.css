@@ -467,6 +467,38 @@ button.qz-opt:hover .qz-l{background:var(--select)}
 /* ---- ayarlar ---- */
 .modal-bg{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,12,14,.62)}
 .modal{width:min(860px,100%);height:min(640px,100%);display:flex;padding:8px;overflow:hidden;border-radius:20px;background:var(--bg);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+/* ---- takvim (koç modu): haftalık görünüm + yaklaşanlar ---- */
+.cal-page{max-width:1100px;margin:0 auto;padding:8px 24px 40px;display:flex;flex-direction:column;gap:20px}
+.cal-nav{display:flex;align-items:center;gap:6px}
+.cal-range{margin-left:10px;font-size:15px;font-weight:700;letter-spacing:-.01em}
+.cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.cal-day{min-height:200px;display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:12px;background:var(--panel)}
+.cal-dh{display:flex;align-items:center;gap:6px;padding:2px 2px 4px 6px;font-size:11.5px;font-weight:600;color:var(--mute)}
+.cal-dh b{font-size:15px;font-weight:700;color:var(--fg)}
+.cal-day.today .cal-dh b{min-width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;border-radius:12px;background:var(--accent);color:var(--on-accent)}
+.cal-add{width:24px;height:24px;margin-left:auto;display:flex;align-items:center;justify-content:center;border-radius:50%;color:var(--faint)}
+.cal-add:hover{background:var(--surface);color:var(--fg)}
+.cal-ev{width:100%;display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:8px;background:var(--surface)}
+.cal-ev:hover{background:var(--select)}
+.cal-ev .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ev .s{font-size:11.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ev.k-sinav,.cal-ev.k-odev{box-shadow:inset 0 0 0 1px var(--accent-line)}
+.cal-ev.k-sinav .t,.cal-ev.k-odev .t{color:var(--accent)}
+.cal-list{padding-top:10px}
+/* etkinlik düzenleyici ve önerisi */
+.cn-dlg.ev-dlg{width:min(520px,100%)}
+.ev-dlg .nw-title-in{width:100%;background:var(--panel)}
+.ev-dlg .row-btns{align-items:center}
+input[type=date].fin,input[type=time].fin{width:auto;color-scheme:dark;text-align:left}
+.ev-time{justify-content:flex-end;display:flex;align-items:center;gap:6px}.ev-time .fin{flex:0 0 auto}
+.fin.ev-note{flex:1;width:auto;max-width:none;text-align:left}
+.ev-days{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
+.ev-days button{min-width:38px;height:28px;display:flex;align-items:center;justify-content:center;padding:0 8px;border-radius:14px;background:var(--bg);font-size:12px;color:var(--mute)}
+.ev-days button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);font-weight:700}
+.ev-lines{display:flex;flex-direction:column;gap:6px}
+.nw-card del{color:var(--mute)}
+.pill.primary.danger-bg{background:var(--danger);color:var(--on-accent)}
+.nw-open:disabled{cursor:default}
 /* koç moduna ilk girişteki uyarı */
 .cn-dlg{width:min(460px,100%);max-height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:24px;border-radius:20px;background:var(--bg);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55)}
 .cn-dlg h2{margin:-8px 0 0;font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.02em}
@@ -566,6 +598,8 @@ select.fin{text-align-last:right}
   .nt-page{padding:20px 16px 32px}.nt-bar-wrap{padding:0 12px 12px}
   .modal-bg{padding:0}
   .modal-bg.pad{padding:16px}
+  .cal-page{padding:4px 16px 32px}.cal-week{grid-template-columns:1fr}.cal-day{min-height:0}.cal-day.none:not(.today){display:none}
+  .cal-range{font-size:14px}.cal-ev{padding:10px 12px;font-size:15px}.cal-ev .s{font-size:13px}
   .qz-dlg{width:100%;height:100%;border:0;border-radius:0}.mac .qz-dlg{padding-top:44px}
   .qz-in{height:44px;border-radius:22px;font-size:16px}.qz-ta,.qz-opt{font-size:16px}.qz-opt{min-height:50px}
   .qz-df{flex-direction:column;align-items:stretch;gap:10px;padding:10px 14px 14px}.qz-df .pill,.qz-nav .pill{height:40px;border-radius:20px}

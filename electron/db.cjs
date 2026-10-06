@@ -166,7 +166,24 @@ const MIGRATIONS = [
      chat_id TEXT,
      created_at INTEGER NOT NULL
    );
-   CREATE INDEX note_revisions_note ON note_revisions(note_id, id);`
+   CREATE INDEX note_revisions_note ON note_revisions(note_id, id);`,
+
+  // Takvim: tekrarlayan etkinlik tek satırdır (rrule); görünen günler calendar.cjs'te açılır. Proje silinince etkinlik kalır, bağı kopar.
+  `CREATE TABLE events (
+     id TEXT PRIMARY KEY,
+     title TEXT NOT NULL,
+     kind TEXT NOT NULL,                      -- 'ders' | 'sinav' | 'odev' | 'antrenman' | 'ogun' | 'diger'
+     start_at INTEGER NOT NULL,
+     end_at INTEGER,
+     all_day INTEGER NOT NULL DEFAULT 0,
+     rrule TEXT,                              -- tekrarlama kuralı (örn. FREQ=WEEKLY;BYDAY=MO,WE)
+     project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+     notes TEXT,
+     created_by TEXT NOT NULL DEFAULT 'user', -- 'user' | 'ai'
+     created_at INTEGER NOT NULL
+   );
+   CREATE INDEX events_start ON events(start_at);
+   CREATE INDEX events_project ON events(project_id);`
 ]
 
 function openDb(dir) {

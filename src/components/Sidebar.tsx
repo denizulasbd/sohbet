@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import type { Chat, Note, Project, ProjectKind, SbPage } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Chat, EventOcc, Note, Project, ProjectKind, SbPage } from '../types'
+import { addDays, dayLabel, startOfDay, timeLabel } from '../calendar'
 import { isEmptyNote, noteGroup, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { kbd } from '../platform'
 import { MODES, type Mode } from '../modes'
-import { Back, Chat as ChatIcon, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
+import { Back, Calendar, Chat as ChatIcon, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
 
 const DAY = 86400000
 function group(ts: number) {
@@ -20,6 +21,8 @@ interface Props {
   chats: Chat[]; activeId: string | null; onPick(id: string): void; onNew(): void; onDelete(id: string): void
   notes: Note[]; activeNoteId: string | null; onPickNote(id: string): void; onNewNote(): void; onDeleteNote(id: string): void
   projects: Project[]; activeProjectId: string | null; onPickProject(id: string): void; onNewProject(): void; onDeleteProject(id: string): void
+  /** Takvim (koç modu): calTick değişince yaklaşan etkinlikler yenilenir. */
+  calTick: number; onPickEvent(at: number): void; onNewEvent(): void
   onClose(): void; onSettings(): void; searchRef: React.RefObject<HTMLInputElement>
 }
 
@@ -28,17 +31,19 @@ interface Props {
 const SECTIONS = [
   { id: 'chat' as const, label: 'Sohbetler', tab: 'Sohbet', Icon: ChatIcon },
   { id: 'notes' as const, label: 'Notlar', tab: 'Notlar', Icon: FileText },
-  { id: 'projects' as const, label: 'Projeler', tab: 'Projeler', Icon: Folder }
+  { id: 'projects' as const, label: 'Projeler', tab: 'Projeler', Icon: Folder },
+  { id: 'calendar' as const, label: 'Takvim', tab: 'Takvim', Icon: Calendar }
 ]
-const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje' }
+// Hangi bölüm hangi modda: notlar ve projeler sohbet modunun, takvim koç modunun bölümüdür.
+const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['chat', 'calendar'] }
+const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik' }
 const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }]
 
 export default function Sidebar(p: Props) {
-  // Notlar ve projeler sohbet modunun bölümleridir; koç modunda yalnızca sohbet listesi vardır.
-  const sections = p.mode === 'coach' ? SECTIONS.filter((s) => s.id === 'chat') : SECTIONS
+  const sections = SECTIONS.filter((s) => MODE_SECTIONS[p.mode].includes(s.id))
   const cur = SECTIONS.find((s) => s.id === p.view)!
   const newLabel = NEW[p.view]
-  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject }[p.view]
+  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent }[p.view]
   return (
     <aside className="side">
       <div className="side-top">
@@ -58,7 +63,7 @@ export default function Sidebar(p: Props) {
         </div>
       )}
 
-      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : <ProjectList {...p} />}
+      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' ? <CalendarList {...p} /> : <ProjectList {...p} />}
 
       <div className="side-foot">
         <button className="row" onClick={p.onSettings}><Gear size={17} /><span className="t">Ayarlar</span><span className="kbd">{kbd(',')}</span></button>
@@ -163,6 +168,46 @@ function NoteList({ notes, activeNoteId, onPickNote, onDeleteNote, searchRef }: 
         ))}
       </nav>
     </>
+  )
+}
+
+/** Koç modu → Takvim: önümüzdeki 30 günün etkinlikleri, gün gün. Satıra tıklayınca takvim o haftaya gider. */
+function CalendarList({ calTick, onPickEvent }: Props) {
+  const [items, setItems] = useState<EventOcc[]>([])
+  useEffect(() => {
+    let live = true
+    const today = startOfDay(Date.now())
+    window.api.listEvents(today, addDays(today, 30)).then((l) => { if (live) setItems(l) }).catch(() => {})
+    return () => { live = false }
+  }, [calTick])
+  const groups = useMemo(() => {
+    const out: { name: string; items: EventOcc[] }[] = []
+    for (const o of items.slice(0, 60)) {
+      const name = dayLabel(o.at).toLocaleUpperCase('tr-TR'), last = out[out.length - 1]
+      if (last?.name === name) last.items.push(o); else out.push({ name, items: [o] })
+    }
+    return out
+  }, [items])
+  return (
+    <nav className="hist cal-list" aria-label="Yaklaşan etkinlikler">
+      <div className="grp">
+        <div className="row" onClick={() => onPickEvent(Date.now())}><Calendar size={16} /><span className="t">Bu hafta</span></div>
+      </div>
+      {groups.length === 0 && <div className="grp-h">YAKLAŞAN ETKİNLİK YOK</div>}
+      {groups.map((g) => (
+        <div key={g.name} style={{ display: 'contents' }}>
+          <div className="grp-h">{g.name}</div>
+          <div className="grp">
+            {g.items.map((o) => (
+              <div key={o.id + o.at} className="row" onClick={() => onPickEvent(o.at)} title={o.title}>
+                <span className="t">{o.title}</span>
+                <span className="time">{o.allDay ? 'Tüm gün' : timeLabel(o).slice(0, 5)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
   )
 }
 

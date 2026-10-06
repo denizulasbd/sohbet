@@ -8,9 +8,11 @@ import NoteEditor from './components/NoteEditor'
 import NotePicker from './components/NotePicker'
 import NoteCard, { NoteChip } from './components/NoteCard'
 import ProjectPage from './components/ProjectPage'
+import CalendarPage, { type CalRequest } from './components/CalendarPage'
+import EventCard, { EventChip } from './components/EventCard'
 import CitedSources, { citedSources, citedWeb, domainOf, WebSources } from './components/Sources'
 import SourceViewer from './components/SourceViewer'
-import { Chat as ChatIcon, Check, Close, Copy, FileText, Folder, Globe, Level, Redo, Search, Star, Stop, Up, UpDown } from './components/Icons'
+import { Calendar, Chat as ChatIcon, Check, Close, Copy, FileText, Folder, Globe, Level, Redo, Search, Star, Stop, Up, UpDown } from './components/Icons'
 import { contentOf, isEmptyNote, toRef } from './notes'
 import { isMac } from './platform'
 import { detectReasoning, normalizeReasoning } from './reasoning'
@@ -28,6 +30,7 @@ function mentionAt(text: string, caret: number): { start: number; q: string } | 
 function stepText(s: ToolStep) {
   if (s.kind === 'web') return s.count == null ? "Web'de aranıyor…" : `Web'de arandı · ${s.count} arama`
   if (s.kind === 'read') return s.count == null ? 'Kaynak okunuyor…' : `Okundu: ${s.text}`
+  if (s.kind === 'calendar') return s.count == null ? 'Takvime bakılıyor…' : `Takvime bakıldı: ${s.text} · ${s.count ? s.count + ' etkinlik' : 'etkinlik yok'}`
   if (s.kind === 'memory') return s.count == null ? 'Hafızada aranıyor…' : `Hafızada arandı: ${s.text} · ${s.count ? s.count + ' kayıt' : 'kayıt yok'}`
   if (s.kind === 'list') return s.count == null ? 'Kaynaklar listeleniyor…' : `Kaynaklar listelendi: ${s.text} · ${s.count} kaynak`
   // özetleme sürerken metin ilerlemeyi taşır ("Sayfa 21–30 işleniyor… · dosya")
@@ -67,6 +70,11 @@ export default function App() {
   const [view, setView] = useState<SbPage>('chat')
   // Sohbet / koç modu: her modun kendi sohbet listesi, talimatı ve modeli vardır; notlar ve projeler sohbet modundadır.
   const [mode, setMode] = useState<Mode>('chat')
+  // Takvim: calTick her değişiklikte artar (takvim sayfası, kenar çubuğu ve proje sayfası yenilenir); calReq takvim sayfasına gidilecek günü ya da yeni etkinlik isteğini taşır.
+  const [calTick, setCalTick] = useState(0)
+  const [calReq, setCalReq] = useState<CalRequest | null>(null)
+  const bumpCal = () => setCalTick((n) => n + 1)
+  const openCalendar = (r: Omit<CalRequest, 'n'>) => { setCalReq({ ...r, n: Date.now() }); setView('calendar'); if (window.innerWidth <= 760) setSidebar(false) }
   const [notes, setNotes] = useState<Note[]>([])
   // Notların en güncel hali: modelin not önerisi kaydedilirken (akış sırasında, eski kapanımlardan) okunur ve hemen diske yazılır.
   const notesRef = useRef<Note[]>([])
@@ -285,6 +293,31 @@ export default function App() {
       patchOp(chatId, msgId, op.id, { status: 'cancelled', error: message })
       window.api.resolveNote(msgId, op.id, { action: 'error', message }).catch(() => {})
     }
+  }
+  // ---- modelin takvim önerileri (create_event / update_event / delete_event): not önerileriyle aynı onay ve geri alma akışı ----
+  async function commitEventOp(chatId: string, msgId: string, op: NoteOp) {
+    try {
+      let eventId = op.eventId, before = op.before
+      if (op.kind === 'create') eventId = (await window.api.createEvent(op.event!, 'ai')).id
+      else if (op.kind === 'update') { if (!(await window.api.updateEvent(op.eventId!, op.event!))) throw new Error('Etkinlik artık yok.') }
+      else { before = (await window.api.deleteEvent(op.eventId!)) ?? undefined; if (!before) throw new Error('Etkinlik artık yok.') }
+      patchOp(chatId, msgId, op.id, { status: 'saved', eventId, before })
+      bumpCal()
+      await window.api.resolveNote(msgId, op.id, { action: 'saved', eventId })
+    } catch (e: any) {
+      const message = String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').slice(0, 200)
+      patchOp(chatId, msgId, op.id, { status: 'cancelled', error: message })
+      window.api.resolveNote(msgId, op.id, { action: 'error', message }).catch(() => {})
+    }
+  }
+  /** Geri al: eklenen etkinlik silinir, değiştirilen önceki haline döner, silinen geri yüklenir. */
+  async function undoEventOp(chatId: string, msgId: string, op: NoteOp) {
+    try {
+      if (op.kind === 'create') await window.api.deleteEvent(op.eventId!)
+      else if (op.kind === 'update') { if (!op.before || !(await window.api.updateEvent(op.eventId!, op.before))) { alert('Bu etkinlik artık yok.'); return } }
+      else if (!op.before || !(await window.api.restoreEvent(op.before))) { alert('Etkinlik geri yüklenemedi.'); return }
+      patchOp(chatId, msgId, op.id, { status: 'undone' }); bumpCal()
+    } catch { alert('İşlem geri alınamadı.') }
   }
   function cancelOp(chatId: string, msgId: string, op: NoteOp) {
     patchOp(chatId, msgId, op.id, { status: 'cancelled' })
@@ -516,7 +549,7 @@ export default function App() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key.toLowerCase() === 'n') { e.preventDefault(); if (view === 'notes') newNote(); else if (view === 'projects') newProject(); else newChat() }
+      if (e.key.toLowerCase() === 'n') { e.preventDefault(); if (view === 'notes') newNote(); else if (view === 'projects') newProject(); else if (view === 'calendar') openCalendar({ create: {} }); else newChat() }
       if (e.key.toLowerCase() === 'k') { e.preventDefault(); setSidebar(true); setTimeout(() => searchRef.current?.focus(), 0) }
       if (e.key === ',') { e.preventDefault(); setShowSettings(true) }
     }
@@ -546,10 +579,13 @@ export default function App() {
           onNew={newChat} onDelete={del}
           notes={notes} activeNoteId={activeNoteId} onPickNote={pickNote} onNewNote={newNote} onDeleteNote={delNote}
           projects={projects} activeProjectId={activeProjectId} onPickProject={pickProject} onNewProject={newProject} onDeleteProject={delProject}
+          calTick={calTick} onPickEvent={(at) => openCalendar({ at })} onNewEvent={() => openCalendar({ create: {} })}
           onClose={() => setSidebar(false)} onSettings={() => setShowSettings(true)} />
       )}
       <main>
-        {view === 'notes' ? (
+        {view === 'calendar' ? (
+          <CalendarPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={calTick} onChanged={bumpCal} req={calReq} />
+        ) : view === 'notes' ? (
           <NoteEditor note={activeNote} projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)}
             onChange={(patch) => activeNote && patchNote(activeNote.id, patch)}
             onDelete={() => activeNote && delNote(activeNote.id)} onUseInChat={() => activeNote && useNoteInChat(activeNote)} onNew={newNote} onOpenFile={openFile} />
@@ -557,7 +593,7 @@ export default function App() {
           <ProjectPage project={activeProject} notes={notes} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)}
             onUpdate={(patch) => activeProject && updateProject(activeProject.id, patch)}
             onDelete={() => activeProject && delProject(activeProject.id)} onNew={newProject} onOpenNote={openNote} onOpenFile={openFile} onFilesChanged={reloadProjects}
-            providerId={provider?.id} model={provider?.model} onOpenSource={openSource} />
+            providerId={provider?.id} model={provider?.model} onOpenSource={openSource} calTick={calTick} />
         ) : <>
         <header className={'top' + (sidebar ? '' : ' bare')}>
           <div className="top-l">
@@ -630,13 +666,18 @@ export default function App() {
                   {m.think && <ReasoningPanel msg={m} live={streaming && idx === active.msgs.length - 1 && !m.think.end} />}
                   {m.steps?.length ? (
                     <div className="kn-steps" aria-live="polite">
-                      {m.steps.map((s, i) => <div key={i} className={'memo' + (s.count == null ? ' kn-live' : '')}>{s.kind === 'read' || s.kind === 'summarize' ? <FileText size={13} /> : s.kind === 'web' ? <Globe size={13} /> : s.kind === 'list' ? <Folder size={13} /> : <Search size={13} />}<span>{stepText(s)}</span></div>)}
+                      {m.steps.map((s, i) => <div key={i} className={'memo' + (s.count == null ? ' kn-live' : '')}>{s.kind === 'read' || s.kind === 'summarize' ? <FileText size={13} /> : s.kind === 'web' ? <Globe size={13} /> : s.kind === 'list' ? <Folder size={13} /> : s.kind === 'calendar' ? <Calendar size={13} /> : <Search size={13} />}<span>{stepText(s)}</span></div>)}
                     </div>
                   ) : null}
                   {m.error ? <div className="err">{m.text}</div> : m.text || !m.think ? <Markdown text={m.text} sources={active.sources} onSource={openSource} web={active.webSources} onWeb={openWeb} /> : null}
                   {!m.error && active.sources?.length ? <CitedSources sources={citedSources(m.text, active.sources)} onOpen={openSource} /> : null}
                   {!m.error && active.webSources?.length ? <WebSources sources={citedWeb(m.text, active.webSources, m.web)} projects={projects} projectId={active.msgs[idx - 1]?.projectId} onOpen={openWeb} onSave={saveWebNote} /> : null}
-                  {m.noteOps?.map((op) => op.status === 'pending' && streaming && idx === active.msgs.length - 1 && !op.auto
+                  {m.noteOps?.map((op) => op.target === 'event'
+                    ? op.status === 'pending' && streaming && idx === active.msgs.length - 1
+                      ? <EventCard key={op.id} op={op} projects={projects} onSave={() => commitEventOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
+                      : <EventChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onUndo={() => undoEventOp(active.id, m.id, op)}
+                          onOpen={mode === 'coach' && op.kind !== 'delete' && op.event ? () => openCalendar({ at: op.event!.startAt }) : undefined} />
+                    : op.status === 'pending' && streaming && idx === active.msgs.length - 1 && !op.auto
                     ? <NoteCard key={op.id} op={op} projects={projects} current={op.kind === 'edit' ? notes.find((n) => n.id === op.noteId)?.body : undefined} onSave={(edit) => commitOp(active.id, m.id, op, edit)} onCancel={() => cancelOp(active.id, m.id, op)} onLink={openLink} />
                     : op.status === 'pending' && streaming && idx === active.msgs.length - 1 ? null
                     : <NoteChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onOpen={() => openOpNote(op)} onUndo={() => undoOp(active.id, m.id, op)} />)}
