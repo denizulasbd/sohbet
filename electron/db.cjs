@@ -183,7 +183,28 @@ const MIGRATIONS = [
      created_at INTEGER NOT NULL
    );
    CREATE INDEX events_start ON events(start_at);
-   CREATE INDEX events_project ON events(project_id);`
+   CREATE INDEX events_project ON events(project_id);`,
+
+  // Alışkanlık ve takip: tek genel yapı. Bir günün değeri o günün kayıtlarının toplamıdır (bkz. trackers.cjs).
+  `CREATE TABLE trackers (
+     id TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     kind TEXT NOT NULL,                      -- 'check' (yapıldı/yapılmadı) | 'number' | 'duration'
+     unit TEXT,                               -- örn. 'bardak', 'dakika', 'saat'
+     frequency TEXT NOT NULL,                 -- 'daily' | 'weekly'
+     target REAL,
+     archived INTEGER NOT NULL DEFAULT 0,
+     created_at INTEGER NOT NULL
+   );
+   CREATE TABLE tracker_entries (
+     id TEXT PRIMARY KEY,
+     tracker_id TEXT NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+     date TEXT NOT NULL,                      -- YYYY-MM-DD (yerel tarih)
+     value REAL,
+     note TEXT,
+     created_at INTEGER NOT NULL
+   );
+   CREATE INDEX tracker_entries_day ON tracker_entries(tracker_id, date);`
 ]
 
 function openDb(dir) {

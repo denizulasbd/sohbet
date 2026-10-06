@@ -12,12 +12,21 @@ export interface Note { id: string; title: string; body: string; pinned?: boolea
  *  düzenlemede oldText'in yerine geçecek metin; oldText notta tam bir kez geçer).
  *  pending: önizleme kartı onay bekliyor · saved: yazıldı (noteId; eklemede revId = önceki halin revizyonu) · undone: geri alındı.
  *  savedAt: notun yazıldığı andaki updatedAt değeri (sonradan elle değişti mi anlamak için). */
-/** target 'event': takvim önerisi (kind create | update | delete). event: yazılacak alanlar · eventId: hedef etkinlik · before: değişiklikten ya da silmeden önceki hali (geri alma). */
-export interface NoteOp { target?: 'note' | 'event'; event?: EventInput; eventId?: string; before?: CalEvent; id: string; kind: 'create' | 'append' | 'edit' | 'update' | 'delete'; oldText?: string; status: 'pending' | 'saved' | 'cancelled' | 'undone'; title: string; body: string; projectId?: string | null; noteId?: string; revId?: number; savedAt?: number; auto?: boolean; error?: string }
+/** target 'event': takvim önerisi (kind create | update | delete). event: yazılacak alanlar · eventId: hedef etkinlik · before: değişiklikten ya da silmeden önceki hali (geri alma).
+ *  target 'tracker': yeni takip önerisi (tracker: alanlar, trackerId: oluşan takip) · target 'entry': modelin onaysız eklediği takip kaydı (entryId; body: "6 bardak · bugün"), yalnızca geri alınabilir. */
+export interface NoteOp { target?: 'note' | 'event' | 'tracker' | 'entry'; tracker?: TrackerInput; trackerId?: string; entryId?: string; event?: EventInput; eventId?: string; before?: CalEvent; id: string; kind: 'create' | 'append' | 'edit' | 'update' | 'delete'; oldText?: string; status: 'pending' | 'saved' | 'cancelled' | 'undone'; title: string; body: string; projectId?: string | null; noteId?: string; revId?: number; savedAt?: number; auto?: boolean; error?: string }
 /** Önizleme kartında kullanıcının son hali. */
 export interface NoteEdit { title: string; body: string; projectId: string | null }
 /** Uygulama bölümleri (kenar çubuğundaki seçici ve ana alan). Yeni bölüm eklemek için buraya ekleyin. */
-export type SbPage = 'chat' | 'notes' | 'projects' | 'calendar'
+export type SbPage = 'chat' | 'notes' | 'projects' | 'calendar' | 'trackers'
+// ---- takip ----
+/** check: yapıldı/yapılmadı · number: sayı (bardak, sayfa) · duration: süre (dakika, saat). */
+export type TrackerKind = 'check' | 'number' | 'duration'
+/** target: frequency dönemindeki hedef (günlük ya da haftalık miktar; check türünde haftada/günde kaç kez). */
+export interface TrackerInput { name: string; kind: TrackerKind; unit: string | null; frequency: 'daily' | 'weekly'; target: number | null }
+export interface Tracker extends TrackerInput { id: string; createdAt: number }
+/** Takip ve bir haftanın değerleri: days pazartesiden pazara günlük toplamlar, total haftanın toplamı. */
+export interface TrackerWeek extends Tracker { days: number[]; total: number }
 // ---- takvim ----
 export type EventKind = 'ders' | 'sinav' | 'odev' | 'antrenman' | 'ogun' | 'diger'
 export type WeekDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU'
@@ -54,7 +63,7 @@ export interface SourceRef { n: number; sourceType: 'file' | 'note'; sourceId: s
  *  quotes: sağlayıcı konum bildirdiyse kaynağın dayandığı metin parçaları. Numaralar sohbet boyunca sabittir. */
 export interface WebRef { n: number; url: string; title: string; content: string; quotes?: string[] }
 /** Modelin proje içinde yaptığı bir arama, okuma, kaynak listeleme ya da belge özetleme; 'web': web araması (count: arama sayısı). count yoksa işlem sürüyor. */
-export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize' | 'memory' | 'calendar'; text: string; count?: number }
+export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize' | 'memory' | 'calendar' | 'tracker'; text: string; count?: number }
 /** projectId: mesajda @ ile seçilen proje (metne gömülmez); projectName gösterim için o anki adıdır. */
 /** web: bu cevapta gelen web kaynaklarının numaraları; webSearches/webCost: yapılan arama sayısı ve dolar karşılığı. */
 /** tokens/inTokens: cevabın çıkış ve giriş token sayısı (araç turları ve alt çağrılar dahil); cost: sağlayıcının bildirdiği dolar karşılığı (yalnızca OpenRouter). */
@@ -113,7 +122,7 @@ declare global {
       /** immediate: arama indeksi beklemeden güncellenir. */
       saveNotes(n: Note[], immediate?: boolean): Promise<void>
       /** Modelin not önerisine verilen karar; cevabı üreten araç döngüsü bununla devam eder. */
-      resolveNote(requestId: string, opId: string, result: { action: 'saved'; noteId?: string; projectName?: string; edited?: boolean; eventId?: string } | { action: 'cancel' } | { action: 'error'; message: string }): Promise<void>
+      resolveNote(requestId: string, opId: string, result: { action: 'saved'; noteId?: string; projectName?: string; edited?: boolean; eventId?: string; trackerId?: string } | { action: 'cancel' } | { action: 'error'; message: string }): Promise<void>
       /** Notun o anki halini saklar ("Geri al" için); revizyon numarasını döndürür. */
       addRevision(r: { noteId: string; title: string; body: string; reason: 'append' | 'edit'; chatId?: string }): Promise<number | null>
       getRevision(id: number): Promise<{ id: number; noteId: string; title: string; body: string; reason: string; createdAt: number } | null>
@@ -124,6 +133,15 @@ declare global {
       /** Siler ve silinen etkinliği döndürür (geri yüklemek için); etkinlik yoksa null. */
       deleteEvent(id: string): Promise<CalEvent | null>
       restoreEvent(snapshot: CalEvent): Promise<CalEvent | null>
+      /** weekOf: haftanın herhangi bir günü (YYYY-AA-GG); verilmezse bu hafta. */
+      listTrackers(weekOf?: string): Promise<TrackerWeek[]>
+      createTracker(input: TrackerInput): Promise<Tracker>
+      updateTracker(id: string, patch: Partial<TrackerInput>): Promise<Tracker | null>
+      /** Takibi tüm kayıtlarıyla siler. */
+      deleteTracker(id: string): Promise<void>
+      /** Günün değerini doğrudan belirler (0: günü boşaltır). date: YYYY-AA-GG. */
+      setTrackerDay(id: string, date: string, value: number): Promise<void>
+      deleteTrackerEntry(id: string): Promise<void>
       loadSettings(): Promise<Settings>
       saveSettings(s: Settings): Promise<void>
       clearKey(id: string): Promise<void>

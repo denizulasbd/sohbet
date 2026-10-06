@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Chat, EventOcc, Note, Project, ProjectKind, SbPage } from '../types'
-import { addDays, dayLabel, startOfDay, timeLabel } from '../calendar'
+import type { Chat, EventOcc, Note, Project, ProjectKind, SbPage, TrackerWeek } from '../types'
+import { num } from '../trackers'
+import { addDays, dayLabel, startOfDay, startOfWeek, timeLabel } from '../calendar'
 import { isEmptyNote, noteGroup, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { kbd } from '../platform'
 import { MODES, type Mode } from '../modes'
-import { Back, Calendar, Chat as ChatIcon, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
+import { Back, Calendar, Chat as ChatIcon, Check, Checklist, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
 
 const DAY = 86400000
 function group(ts: number) {
@@ -23,6 +24,8 @@ interface Props {
   projects: Project[]; activeProjectId: string | null; onPickProject(id: string): void; onNewProject(): void; onDeleteProject(id: string): void
   /** Takvim (koç modu): calTick değişince yaklaşan etkinlikler yenilenir. */
   calTick: number; onPickEvent(at: number): void; onNewEvent(): void
+  /** Takip (koç modu): trkTick değişince bugünün durumu yenilenir. */
+  trkTick: number; onOpenTrackers(): void; onNewTracker(): void
   onClose(): void; onSettings(): void; searchRef: React.RefObject<HTMLInputElement>
 }
 
@@ -32,18 +35,19 @@ const SECTIONS = [
   { id: 'chat' as const, label: 'Sohbetler', tab: 'Sohbet', Icon: ChatIcon },
   { id: 'notes' as const, label: 'Notlar', tab: 'Notlar', Icon: FileText },
   { id: 'projects' as const, label: 'Projeler', tab: 'Projeler', Icon: Folder },
-  { id: 'calendar' as const, label: 'Takvim', tab: 'Takvim', Icon: Calendar }
+  { id: 'calendar' as const, label: 'Takvim', tab: 'Takvim', Icon: Calendar },
+  { id: 'trackers' as const, label: 'Takip', tab: 'Takip', Icon: Checklist }
 ]
 // Hangi bölüm hangi modda: notlar ve projeler sohbet modunun, takvim koç modunun bölümüdür.
-const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['chat', 'calendar'] }
-const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik' }
+const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['chat', 'calendar', 'trackers'] }
+const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik', trackers: 'Yeni takip' }
 const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }]
 
 export default function Sidebar(p: Props) {
   const sections = SECTIONS.filter((s) => MODE_SECTIONS[p.mode].includes(s.id))
   const cur = SECTIONS.find((s) => s.id === p.view)!
   const newLabel = NEW[p.view]
-  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent }[p.view]
+  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent, trackers: p.onNewTracker }[p.view]
   return (
     <aside className="side">
       <div className="side-top">
@@ -63,7 +67,7 @@ export default function Sidebar(p: Props) {
         </div>
       )}
 
-      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' ? <CalendarList {...p} /> : <ProjectList {...p} />}
+      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' ? <CalendarList {...p} /> : p.view === 'trackers' ? <TrackerList {...p} /> : <ProjectList {...p} />}
 
       <div className="side-foot">
         <button className="row" onClick={p.onSettings}><Gear size={17} /><span className="t">Ayarlar</span><span className="kbd">{kbd(',')}</span></button>
@@ -207,6 +211,34 @@ function CalendarList({ calTick, onPickEvent }: Props) {
           </div>
         </div>
       ))}
+    </nav>
+  )
+}
+
+/** Koç modu → Takip: takipler ve bugünkü durumları. Satıra tıklayınca takip sayfası açılır. */
+function TrackerList({ trkTick, onOpenTrackers }: Props) {
+  const [items, setItems] = useState<TrackerWeek[] | null>(null)
+  useEffect(() => {
+    let live = true
+    window.api.listTrackers().then((l) => { if (live) setItems(l) }).catch(() => { if (live) setItems([]) })
+    return () => { live = false }
+  }, [trkTick])
+  const today = Math.round((startOfDay(Date.now()) - startOfWeek(Date.now())) / 86400000)
+  return (
+    <nav className="hist cal-list" aria-label="Takipler">
+      {items?.length === 0 && <div className="grp-h">HENÜZ TAKİP YOK</div>}
+      {items && items.length > 0 && <div className="grp-h">BUGÜN</div>}
+      <div className="grp">
+        {items?.map((t) => {
+          const v = t.days[today] ?? 0
+          return (
+            <div key={t.id} className="row" onClick={onOpenTrackers} title={t.name}>
+              <span className="t">{t.name}</span>
+              <span className="time">{t.kind === 'check' ? (v > 0 ? <Check size={15} /> : '–') : num(v) + (t.frequency === 'daily' && t.target ? ' / ' + num(t.target) : t.unit ? ' ' + t.unit : '')}</span>
+            </div>
+          )
+        })}
+      </div>
     </nav>
   )
 }

@@ -155,6 +155,7 @@ function register(dir, opts = {}) {
   db = openDb(dir)
   search.init(db)
   require('./calendar.cjs').register(db)
+  require('./trackers.cjs').register(db)
   // Önceki oturumda yarım kalan işler yeniden sıraya alınır.
   db.prepare("UPDATE files SET status = 'queued', error = NULL WHERE status = 'processing'").run()
   for (const id of db.prepare("SELECT id FROM files WHERE status = 'queued' ORDER BY created_at").pluck().all()) enqueue(id)

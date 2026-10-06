@@ -10,9 +10,11 @@ import NoteCard, { NoteChip } from './components/NoteCard'
 import ProjectPage from './components/ProjectPage'
 import CalendarPage, { type CalRequest } from './components/CalendarPage'
 import EventCard, { EventChip } from './components/EventCard'
+import TrackersPage, { type TrackerRequest } from './components/TrackersPage'
+import TrackerCard, { TrackerChip } from './components/TrackerCard'
 import CitedSources, { citedSources, citedWeb, domainOf, WebSources } from './components/Sources'
 import SourceViewer from './components/SourceViewer'
-import { Calendar, Chat as ChatIcon, Check, Close, Copy, FileText, Folder, Globe, Level, Redo, Search, Star, Stop, Up, UpDown } from './components/Icons'
+import { Calendar, Chat as ChatIcon, Check, Checklist, Close, Copy, FileText, Folder, Globe, Level, Redo, Search, Star, Stop, Up, UpDown } from './components/Icons'
 import { contentOf, isEmptyNote, toRef } from './notes'
 import { isMac } from './platform'
 import { detectReasoning, normalizeReasoning } from './reasoning'
@@ -30,6 +32,7 @@ function mentionAt(text: string, caret: number): { start: number; q: string } | 
 function stepText(s: ToolStep) {
   if (s.kind === 'web') return s.count == null ? "Web'de aranıyor…" : `Web'de arandı · ${s.count} arama`
   if (s.kind === 'read') return s.count == null ? 'Kaynak okunuyor…' : `Okundu: ${s.text}`
+  if (s.kind === 'tracker') return s.count == null ? 'Takiplere bakılıyor…' : s.text ? `Takip kayıtlarına bakıldı: ${s.text} · ${s.count ? s.count + ' gün kayıt' : 'kayıt yok'}` : `Takipler listelendi · ${s.count} takip`
   if (s.kind === 'calendar') return s.count == null ? 'Takvime bakılıyor…' : `Takvime bakıldı: ${s.text} · ${s.count ? s.count + ' etkinlik' : 'etkinlik yok'}`
   if (s.kind === 'memory') return s.count == null ? 'Hafızada aranıyor…' : `Hafızada arandı: ${s.text} · ${s.count ? s.count + ' kayıt' : 'kayıt yok'}`
   if (s.kind === 'list') return s.count == null ? 'Kaynaklar listeleniyor…' : `Kaynaklar listelendi: ${s.text} · ${s.count} kaynak`
@@ -74,6 +77,11 @@ export default function App() {
   const [calTick, setCalTick] = useState(0)
   const [calReq, setCalReq] = useState<CalRequest | null>(null)
   const bumpCal = () => setCalTick((n) => n + 1)
+  // Takip: aynı düzen (trkTick her değişiklikte artar; trkReq yeni takip isteğini taşır).
+  const [trkTick, setTrkTick] = useState(0)
+  const [trkReq, setTrkReq] = useState<TrackerRequest | null>(null)
+  const bumpTrk = () => setTrkTick((n) => n + 1)
+  const openTrackers = (create?: boolean) => { if (create) setTrkReq({ n: Date.now(), create: true }); setView('trackers'); if (window.innerWidth <= 760) setSidebar(false) }
   const openCalendar = (r: Omit<CalRequest, 'n'>) => { setCalReq({ ...r, n: Date.now() }); setView('calendar'); if (window.innerWidth <= 760) setSidebar(false) }
   const [notes, setNotes] = useState<Note[]>([])
   // Notların en güncel hali: modelin not önerisi kaydedilirken (akış sırasında, eski kapanımlardan) okunur ve hemen diske yazılır.
@@ -319,6 +327,25 @@ export default function App() {
       patchOp(chatId, msgId, op.id, { status: 'undone' }); bumpCal()
     } catch { alert('İşlem geri alınamadı.') }
   }
+  // ---- modelin takip işlemleri: create_tracker onay kartıyla, log_entry onaysız (yalnızca geri alınır) ----
+  async function commitTrackerOp(chatId: string, msgId: string, op: NoteOp) {
+    try {
+      const t = await window.api.createTracker(op.tracker!)
+      patchOp(chatId, msgId, op.id, { status: 'saved', trackerId: t.id }); bumpTrk()
+      await window.api.resolveNote(msgId, op.id, { action: 'saved', trackerId: t.id })
+    } catch (e: any) {
+      const message = String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').slice(0, 200)
+      patchOp(chatId, msgId, op.id, { status: 'cancelled', error: message })
+      window.api.resolveNote(msgId, op.id, { action: 'error', message }).catch(() => {})
+    }
+  }
+  async function undoTrackerOp(chatId: string, msgId: string, op: NoteOp) {
+    try {
+      if (op.target === 'entry') await window.api.deleteTrackerEntry(op.entryId!)
+      else { if (!confirm(`"${op.title}" takibi ve varsa kayıtları silinsin mi?`)) return; await window.api.deleteTracker(op.trackerId!) }
+      patchOp(chatId, msgId, op.id, { status: 'undone' }); bumpTrk()
+    } catch { alert('İşlem geri alınamadı.') }
+  }
   function cancelOp(chatId: string, msgId: string, op: NoteOp) {
     patchOp(chatId, msgId, op.id, { status: 'cancelled' })
     window.api.resolveNote(msgId, op.id, { action: 'cancel' }).catch(() => {})
@@ -418,6 +445,8 @@ export default function App() {
         }),
         // Modelin not önerisi: önizleme kartı olarak mesaja eklenir; "onaysız" ayarı açıksa yeni not hemen kaydedilir.
         onNote: (o) => {
+          // Takip kaydı (log_entry) ana süreçte çoktan yazılmıştır: onay beklemez, doğrudan geri alınabilir etiket olur.
+          if (o.target === 'entry') { setBot((m) => ({ ...m, noteOps: [...(m.noteOps ?? []), { ...o, status: 'saved' }] })); bumpTrk(); return }
           const op: NoteOp = { ...o, status: 'pending' }
           setBot((m) => ({ ...m, noteOps: [...(m.noteOps ?? []), op] }))
           if (op.auto && op.kind === 'create') commitOp(chatId, botId, op)
@@ -549,7 +578,7 @@ export default function App() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key.toLowerCase() === 'n') { e.preventDefault(); if (view === 'notes') newNote(); else if (view === 'projects') newProject(); else if (view === 'calendar') openCalendar({ create: {} }); else newChat() }
+      if (e.key.toLowerCase() === 'n') { e.preventDefault(); if (view === 'notes') newNote(); else if (view === 'projects') newProject(); else if (view === 'calendar') openCalendar({ create: {} }); else if (view === 'trackers') openTrackers(true); else newChat() }
       if (e.key.toLowerCase() === 'k') { e.preventDefault(); setSidebar(true); setTimeout(() => searchRef.current?.focus(), 0) }
       if (e.key === ',') { e.preventDefault(); setShowSettings(true) }
     }
@@ -579,11 +608,14 @@ export default function App() {
           onNew={newChat} onDelete={del}
           notes={notes} activeNoteId={activeNoteId} onPickNote={pickNote} onNewNote={newNote} onDeleteNote={delNote}
           projects={projects} activeProjectId={activeProjectId} onPickProject={pickProject} onNewProject={newProject} onDeleteProject={delProject}
+          trkTick={trkTick} onOpenTrackers={() => openTrackers()} onNewTracker={() => openTrackers(true)}
           calTick={calTick} onPickEvent={(at) => openCalendar({ at })} onNewEvent={() => openCalendar({ create: {} })}
           onClose={() => setSidebar(false)} onSettings={() => setShowSettings(true)} />
       )}
       <main>
-        {view === 'calendar' ? (
+        {view === 'trackers' ? (
+          <TrackersPage sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={trkTick} onChanged={bumpTrk} req={trkReq} />
+        ) : view === 'calendar' ? (
           <CalendarPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={calTick} onChanged={bumpCal} req={calReq} />
         ) : view === 'notes' ? (
           <NoteEditor note={activeNote} projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)}
@@ -666,13 +698,17 @@ export default function App() {
                   {m.think && <ReasoningPanel msg={m} live={streaming && idx === active.msgs.length - 1 && !m.think.end} />}
                   {m.steps?.length ? (
                     <div className="kn-steps" aria-live="polite">
-                      {m.steps.map((s, i) => <div key={i} className={'memo' + (s.count == null ? ' kn-live' : '')}>{s.kind === 'read' || s.kind === 'summarize' ? <FileText size={13} /> : s.kind === 'web' ? <Globe size={13} /> : s.kind === 'list' ? <Folder size={13} /> : s.kind === 'calendar' ? <Calendar size={13} /> : <Search size={13} />}<span>{stepText(s)}</span></div>)}
+                      {m.steps.map((s, i) => <div key={i} className={'memo' + (s.count == null ? ' kn-live' : '')}>{s.kind === 'read' || s.kind === 'summarize' ? <FileText size={13} /> : s.kind === 'web' ? <Globe size={13} /> : s.kind === 'list' ? <Folder size={13} /> : s.kind === 'calendar' ? <Calendar size={13} /> : s.kind === 'tracker' ? <Checklist size={13} /> : <Search size={13} />}<span>{stepText(s)}</span></div>)}
                     </div>
                   ) : null}
                   {m.error ? <div className="err">{m.text}</div> : m.text || !m.think ? <Markdown text={m.text} sources={active.sources} onSource={openSource} web={active.webSources} onWeb={openWeb} /> : null}
                   {!m.error && active.sources?.length ? <CitedSources sources={citedSources(m.text, active.sources)} onOpen={openSource} /> : null}
                   {!m.error && active.webSources?.length ? <WebSources sources={citedWeb(m.text, active.webSources, m.web)} projects={projects} projectId={active.msgs[idx - 1]?.projectId} onOpen={openWeb} onSave={saveWebNote} /> : null}
-                  {m.noteOps?.map((op) => op.target === 'event'
+                  {m.noteOps?.map((op) => op.target === 'tracker' || op.target === 'entry'
+                    ? op.status === 'pending' && streaming && idx === active.msgs.length - 1
+                      ? <TrackerCard key={op.id} op={op} onSave={() => commitTrackerOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
+                      : <TrackerChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onOpen={() => openTrackers()} onUndo={() => undoTrackerOp(active.id, m.id, op)} />
+                    : op.target === 'event'
                     ? op.status === 'pending' && streaming && idx === active.msgs.length - 1
                       ? <EventCard key={op.id} op={op} projects={projects} onSave={() => commitEventOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
                       : <EventChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onUndo={() => undoEventOp(active.id, m.id, op)}

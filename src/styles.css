@@ -487,6 +487,36 @@ button.qz-opt:hover .qz-l{background:var(--select)}
 .cal-ev.k-sinav,.cal-ev.k-odev{box-shadow:inset 0 0 0 1px var(--accent-line)}
 .cal-ev.k-sinav .t,.cal-ev.k-odev .t{color:var(--accent)}
 .cal-list{padding-top:10px}
+/* ---- takip (koç modu): gün seçici + tek dokunuşluk liste ---- */
+.trk-page{max-width:768px;margin:0 auto;padding:8px 24px 40px;display:flex;flex-direction:column;gap:20px}
+.trk-days{flex:1;min-width:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:3px;border-radius:14px;background:var(--panel)}
+.trk-days button{height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:11px;font-size:10.5px;font-weight:600;color:var(--mute)}
+.trk-days button b{font-size:15px;font-weight:700;color:var(--fg2)}
+.trk-days button:hover:not(:disabled){background:var(--surface)}
+.trk-days button:disabled{opacity:.35}
+.trk-days button.today b{color:var(--accent)}
+.trk-days button[aria-pressed=true]{background:var(--accent);color:var(--on-accent2)}
+.trk-days button[aria-pressed=true] b{color:var(--on-accent)}
+.frow.trk{min-height:56px;gap:14px;padding:8px 10px 8px 14px}
+.trk-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.trk-name .pj-n,.trk-name .pj-s{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trk-name .pj-n{font-weight:600;color:var(--fg)}.trk-name .pj-s{font-size:11.5px;font-weight:400;color:var(--mute)}
+.trk-name:hover .pj-n{color:var(--accent)}
+.trk-wk{display:flex;gap:4px;flex-shrink:0}
+.trk-wk i{width:8px;height:8px;border-radius:50%;background:var(--select)}
+.trk-wk i.l1{background:var(--accent-line)}.trk-wk i.l2{background:var(--accent)}
+.trk-wk i.cur{box-shadow:0 0 0 2px var(--panel),0 0 0 3px var(--mute)}
+.trk-check{width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:50%;box-shadow:inset 0 0 0 2px var(--line);color:transparent}
+.trk-check:hover{box-shadow:inset 0 0 0 2px var(--mute)}
+.trk-check.on{background:var(--accent);box-shadow:none;color:var(--on-accent)}
+.trk-num{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.trk-num .circle{font-size:17px;line-height:1}
+.trk-num label{min-width:84px;height:30px;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 10px;border-radius:15px;background:var(--bg);font-size:12px;color:var(--mute)}
+.trk-num label:focus-within{box-shadow:0 0 0 3px var(--ring)}
+.trk-num input{width:34px;min-width:0;padding:0;border:0;outline:0;background:transparent;text-align:right;font-size:14px;font-weight:700;color:var(--fg)}
+.frow.trk-empty{flex-direction:column;align-items:flex-start;gap:12px;padding:14px}
+.trk-tpl{display:flex;flex-wrap:wrap;gap:6px}
+.ev-dlg .fin{text-align:right}
 /* etkinlik düzenleyici ve önerisi */
 .cn-dlg.ev-dlg{width:min(520px,100%)}
 .ev-dlg .nw-title-in{width:100%;background:var(--panel)}
@@ -600,6 +630,7 @@ select.fin{text-align-last:right}
   .nt-page{padding:20px 16px 32px}.nt-bar-wrap{padding:0 12px 12px}
   .modal-bg{padding:0}
   .modal-bg.pad{padding:16px}
+  .trk-page{padding:4px 12px 32px}.trk-wk{display:none}.frow.trk{flex-wrap:nowrap}.trk-check{width:44px;height:44px}.trk-num .circle{width:36px;height:36px}.trk-num label{height:36px;border-radius:18px;min-width:76px}
   .cal-page{padding:4px 16px 32px}.cal-week{grid-template-columns:1fr}.cal-day{min-height:0}.cal-day.none:not(.today){display:none}
   .cal-range{font-size:14px}.cal-ev{padding:10px 12px;font-size:15px}.cal-ev .s{font-size:13px}
   .qz-dlg{width:100%;height:100%;border:0;border-radius:0}.mac .qz-dlg{padding-top:44px}

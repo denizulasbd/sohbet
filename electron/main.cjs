@@ -271,8 +271,10 @@ app.whenReady().then(() => {
         : null
       // Takvim araçları iki modda da vardır; yazma önerileri not önerileriyle aynı onay hattından geçer.
       const calTools = canTool && archive ? require('./calendar.cjs').createTools({ propose, emit, projects: archive.projectNames(), session, signal: ctrl.signal }) : null
-      // Modele verilen uygulama araçları: not yazma (sohbet modu) + takvim + diğer modun hafızasında arama.
-      const notes = memoryTools.combine(memoryTools.combine(noteTools, calTools), memTool)
+      // Takip araçları yalnızca koç modundadır.
+      const trkTools = coach && canTool && archive ? require('./trackers.cjs').createTools({ propose, emit, signal: ctrl.signal }) : null
+      // Modele verilen uygulama araçları: not yazma (sohbet modu) + takvim + takip (koç modu) + diğer modun hafızasında arama.
+      const notes = [noteTools, calTools, trkTools, memTool].reduce(memoryTools.combine, null)
       const go = (withWeb, withNotes) => {
         const system = [buildSystem(s, mode), withWeb ? WEB_RULES : '', withWeb && session ? WEB_PROJECT_RULES : ''].filter(Boolean).join('\n\n')
         const b = withWeb ? { ...base, onAnnotations } : base
