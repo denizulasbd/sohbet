@@ -2,4 +2,6 @@
 export type Mode = 'chat' | 'coach'
 /** Koç modunun görünen adı (çalışma adı); arayüzde her yerde buradan okunur. */
 export const COACH_NAME = 'Yaşam Koçu'
-export const MODES: { id: Mode; label: string }[] = [{ id: 'chat', label: 'Sohbet' }, { id: 'coach', label: COACH_NAME }]
+/** Akademik modun görünen adı (sohbet, notlar, projeler). */
+export const CHAT_NAME = 'Akademik Koç'
+export const MODES: { id: Mode; label: string }[] = [{ id: 'chat', label: CHAT_NAME }, { id: 'coach', label: COACH_NAME }]

@@ -19,6 +19,30 @@ const toForm = (t: TrackerInput): Form => ({ name: t.name, kind: t.kind, unit: t
 const BLANK: Form = { name: '', kind: 'check', unit: '', frequency: 'daily', target: '' }
 const same = (a: string, b: string) => a.trim().toLocaleLowerCase('tr-TR') === b.trim().toLocaleLowerCase('tr-TR')
 
+/** Bir takibin tek satırı: ad ve haftalık durum, haftanın şeridi, seçili günün tek dokunuşluk denetimi. idx: seçili günün haftadaki sırası (0 = pazartesi). */
+export function TrackerRow({ t, idx, dayKey, onSet, onEdit }: { t: TrackerWeek; idx: number; dayKey: number; onSet(v: number): void; onEdit(): void }) {
+  const v = t.days[idx] ?? 0, step = stepOf(t)
+  return (
+    <div className="frow trk">
+      <button className="trk-name" title="Takibi düzenle" onClick={onEdit}>
+        <span className="pj-n">{t.name}</span><span className="pj-s">{weekText(t, t.days, t.total) || 'Hedef yok'}</span>
+      </button>
+      <div className="trk-wk" aria-hidden>{t.days.map((d, i) => <i key={i} className={'l' + dayLevel(t, d) + (i === idx ? ' cur' : '')} title={WEEK_DAYS[i].label} />)}</div>
+      {t.kind === 'check' ? (
+        <button className={'trk-check' + (v > 0 ? ' on' : '')} role="switch" aria-checked={v > 0} aria-label={t.name} onClick={() => onSet(v > 0 ? 0 : 1)}><Check size={18} /></button>
+      ) : (
+        <div className="trk-num">
+          <button className="circle sm" aria-label="Azalt" disabled={v <= 0} onClick={() => onSet(v - step)}>−</button>
+          <label><input key={t.id + dayKey + v} inputMode="decimal" aria-label={`${t.name} değeri`} defaultValue={num(v)}
+            onFocus={(e) => e.target.select()} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            onBlur={(e) => { const n = Number(e.target.value.replace(',', '.')); if (Number.isFinite(n) && n >= 0 && n !== v) onSet(n); else e.target.value = num(v) }} /><span>{t.unit}</span></label>
+          <button className="circle sm" aria-label="Artır" onClick={() => onSet(v + step)}>+</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Koç modunun takip sayfası: seçili günün takipleri tek dokunuşla işaretlenir; her satırda o haftanın şeridi görünür. */
 export default function TrackersPage({ sidebar, onOpenSidebar, tick, onChanged, req }: Props) {
   const today = startOfDay(Date.now())
@@ -96,28 +120,7 @@ export default function TrackersPage({ sidebar, onOpenSidebar, tick, onChanged, 
               </div></div>
             ) : (
               <div className="group">
-                {items.map((t) => {
-                  const v = t.days[idx] ?? 0, step = stepOf(t)
-                  return (
-                    <div key={t.id} className="frow trk">
-                      <button className="trk-name" title="Takibi düzenle" onClick={() => { setErr(''); setDlg({ id: t.id, form: toForm(t) }) }}>
-                        <span className="pj-n">{t.name}</span><span className="pj-s">{weekText(t, t.days, t.total) || 'Hedef yok'}</span>
-                      </button>
-                      <div className="trk-wk" aria-hidden>{t.days.map((d, i) => <i key={i} className={'l' + dayLevel(t, d) + (i === idx ? ' cur' : '')} title={WEEK_DAYS[i].label} />)}</div>
-                      {t.kind === 'check' ? (
-                        <button className={'trk-check' + (v > 0 ? ' on' : '')} role="switch" aria-checked={v > 0} aria-label={t.name} onClick={() => setValue(t, v > 0 ? 0 : 1)}><Check size={18} /></button>
-                      ) : (
-                        <div className="trk-num">
-                          <button className="circle sm" aria-label="Azalt" disabled={v <= 0} onClick={() => setValue(t, v - step)}>−</button>
-                          <label><input key={t.id + day + v} inputMode="decimal" aria-label={`${t.name} değeri`} defaultValue={num(v)}
-                            onFocus={(e) => e.target.select()} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            onBlur={(e) => { const n = Number(e.target.value.replace(',', '.')); if (Number.isFinite(n) && n >= 0 && n !== v) setValue(t, n); else e.target.value = num(v) }} /><span>{t.unit}</span></label>
-                          <button className="circle sm" aria-label="Artır" onClick={() => setValue(t, v + step)}>+</button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                {items.map((t) => <TrackerRow key={t.id} t={t} idx={idx} dayKey={day} onSet={(v) => setValue(t, v)} onEdit={() => { setErr(''); setDlg({ id: t.id, form: toForm(t) }) }} />)}
               </div>
             )}
           </section>

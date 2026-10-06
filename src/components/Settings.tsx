@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ArchiveSettings, ArchiveStatus, CoachSettings, MemoryDomain, MemoryStore, Provider, Settings } from '../types'
-import { COACH_NAME } from '../modes'
+import { CHAT_NAME, COACH_NAME } from '../modes'
 import { Archive, Check, Close, Folder, Key, Plus, Star, Trash } from './Icons'
 
 // Hafıza alanları: akademik kayıtlar Sohbet modunda, yaşam kayıtları koç modunda, genel kayıtlar ikisinde de kullanılır.
@@ -137,7 +137,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                 <div className="group">
                   <label className="frow"><span className="fl">Sağlayıcı</span>
                     <select className="fin" value={coach.providerId && s.providers.some((x) => x.id === coach.providerId) ? coach.providerId : ''} onChange={(e) => setCoach({ providerId: e.target.value || undefined, model: undefined })}>
-                      <option value="">Sohbet ile aynı</option>
+                      <option value="">{CHAT_NAME} ile aynı</option>
                       {s.providers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                     </select>
                   </label>
@@ -166,7 +166,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
               <label className="stack"><span className="label gl">{COACH_NAME.toLocaleUpperCase('tr-TR')} TALİMATLARI</span>
                 <textarea className="tarea" value={coach.systemPrompt} onChange={(e) => setCoach({ systemPrompt: e.target.value })} placeholder="Örn. Sabahları erken kalkıyorum; önerileri buna göre yap." />
               </label>
-              <p className="note gcap">Kişisel talimatlar yalnızca Sohbet modunda, bu talimatlar yalnızca {COACH_NAME} modunda kullanılır. Koç modunun güvenlik kuralları bu alandan değiştirilemez.</p>
+              <p className="note gcap">Kişisel talimatlar yalnızca {CHAT_NAME} modunda, bu talimatlar yalnızca {COACH_NAME} modunda kullanılır. Koç modunun güvenlik kuralları bu alandan değiştirilemez.</p>
 
               <div className="group">
                 <div className="frow">
@@ -194,7 +194,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                             {DOMAINS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                           </select>
                           {dom !== 'genel' && (
-                            <button className={'mem-only' + (i.modeOnly ? ' on' : '')} aria-pressed={!!i.modeOnly} title={`Açıkken bu kayıt yalnızca ${dom === 'yasam' ? COACH_NAME : 'Sohbet'} modunda kullanılır; diğer mod bu kaydı hiçbir koşulda göremez`}
+                            <button className={'mem-only' + (i.modeOnly ? ' on' : '')} aria-pressed={!!i.modeOnly} title={`Açıkken bu kayıt yalnızca ${dom === 'yasam' ? COACH_NAME : CHAT_NAME} modunda kullanılır; diğer mod bu kaydı hiçbir koşulda göremez`}
                               onClick={async () => setMem(await window.api.updateMemory(i.id, { modeOnly: !i.modeOnly }))}>{i.modeOnly && <Check size={12} />}Sadece bu modda kalsın</button>
                           )}
                         </div>
@@ -208,7 +208,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                   </form>
                 </div>
               </div>
-              <p className="note gcap">Akademik kayıtlar Sohbet modunda, yaşam kayıtları {COACH_NAME} modunda, genel kayıtlar ikisinde de kullanılır. Bir mod diğerinin kayıtlarına yalnızca gerektiğinde bakar; "Sadece bu modda kalsın" açık olan kayıtlara hiç bakamaz. Sağlık, beslenme, uyku ve ruh hâliyle ilgili otomatik kayıtlar bu seçenek açık olarak eklenir.</p>
+              <p className="note gcap">Akademik kayıtlar {CHAT_NAME} modunda, yaşam kayıtları {COACH_NAME} modunda, genel kayıtlar ikisinde de kullanılır. Bir mod diğerinin kayıtlarına yalnızca gerektiğinde bakar; "Sadece bu modda kalsın" açık olan kayıtlara hiç bakamaz. Sağlık, beslenme, uyku ve ruh hâliyle ilgili otomatik kayıtlar bu seçenek açık olarak eklenir.</p>
               <p className="note gcap">Otomatik kayıt için her cevaptan sonra seçili modele kısa bir ek istek gönderilir. Parola gibi hassas bilgileri kaydetmemesi için modele talimat verilir; yine de listeyi kontrol edin.</p>
               {mem.items.length > 0 && <button className="pill sm plain danger" style={{ alignSelf: 'flex-start' }} onClick={async () => { if (confirm('Tüm hafıza silinsin mi?')) setMem(await window.api.clearMemory()) }}>Tüm hafızayı sil</button>}
             </>}

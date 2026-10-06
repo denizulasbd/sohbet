@@ -361,6 +361,21 @@ app.whenReady().then(() => {
 
   ipcMain.on('chat:abort', (_e, requestId) => controllers.get(requestId)?.abort())
 
+  // Bugün ekranının günlük özeti: bugün üretilmişse önbellekten döner (model çağrısı yapılmaz); force ile yeniden üretilir.
+  ipcMain.handle('today:summary', async (_e, { providerId, model, force } = {}) => {
+    const p = withPlainKeys(loadSettings()).providers.find((x) => x.id === providerId)
+    try {
+      if (!archive) throw new Error('Veritabanı açılamadı.')
+      if (!p) throw new Error('Sağlayıcı bulunamadı.')
+      const mem = loadMemory()
+      return await require('./today.cjs').summary({
+        force: !!force,
+        memory: mem.enabled ? memoryTools.inPrompt(mem.items, 'coach').map((i) => i.text) : [],
+        complete: (system, user) => completeText({ ...p, model: model || p.model }, system, user, AbortSignal.timeout(60000))
+      })
+    } catch (err) { return { error: explainError(err && err.message ? err.message : err, p).slice(0, 300) } }
+  })
+
   try {
     archive = require('./archive.cjs')
     // Quiz üretimi ve puanlaması da o an seçili sağlayıcı/modelle yapılır (anahtar yalnızca ana süreçte çözülür).

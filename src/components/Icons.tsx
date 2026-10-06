@@ -28,6 +28,7 @@ export const Archive = I(<><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 
 export const Globe = I(<><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.4 2.2 3.6 4.9 3.6 8s-1.2 5.8-3.6 8c-2.4-2.2-3.6-4.9-3.6-8S9.6 6.2 12 4z" /></>)
 export const Quiz = I(<><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.7a2.5 2.5 0 1 1 3.7 2.2c-.8.5-1.3 1-1.3 1.9" /><path d="M12 16.7h.01" strokeWidth="2.4" /></>)
 export const Calendar = I(<><rect x="4" y="5.5" width="16" height="14.5" rx="3" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" /></>)
+export const Sun = I(<><circle cx="12" cy="12" r="3.8" /><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18" /></>)
 export const Folder = I(<path d="M4 8a2.5 2.5 0 0 1 2.5-2.5h3.2l2 2h5.8A2.5 2.5 0 0 1 20 10v6.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z" />)
 
 const BARS =['M5 18v-3', 'M9.5 18v-6', 'M14 18V9', 'M18.5 18V6']

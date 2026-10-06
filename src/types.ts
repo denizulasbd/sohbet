@@ -18,7 +18,7 @@ export interface NoteOp { target?: 'note' | 'event' | 'tracker' | 'entry'; track
 /** Önizleme kartında kullanıcının son hali. */
 export interface NoteEdit { title: string; body: string; projectId: string | null }
 /** Uygulama bölümleri (kenar çubuğundaki seçici ve ana alan). Yeni bölüm eklemek için buraya ekleyin. */
-export type SbPage = 'chat' | 'notes' | 'projects' | 'calendar' | 'trackers'
+export type SbPage = 'chat' | 'notes' | 'projects' | 'calendar' | 'trackers' | 'today'
 // ---- takip ----
 /** check: yapıldı/yapılmadı · number: sayı (bardak, sayfa) · duration: süre (dakika, saat). */
 export type TrackerKind = 'check' | 'number' | 'duration'
@@ -142,6 +142,8 @@ declare global {
       /** Günün değerini doğrudan belirler (0: günü boşaltır). date: YYYY-AA-GG. */
       setTrackerDay(id: string, date: string, value: number): Promise<void>
       deleteTrackerEntry(id: string): Promise<void>
+      /** Bugün ekranının günlük özeti: bugün üretilmişse önbellekten döner; force ile yeniden üretilir. */
+      todaySummary(req: { providerId: string; model?: string; force?: boolean }): Promise<{ date: string; text: string; createdAt: number } | { error: string }>
       loadSettings(): Promise<Settings>
       saveSettings(s: Settings): Promise<void>
       clearKey(id: string): Promise<void>

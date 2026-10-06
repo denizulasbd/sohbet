@@ -11,6 +11,7 @@ import ProjectPage from './components/ProjectPage'
 import CalendarPage, { type CalRequest } from './components/CalendarPage'
 import EventCard, { EventChip } from './components/EventCard'
 import TrackersPage, { type TrackerRequest } from './components/TrackersPage'
+import TodayPage from './components/TodayPage'
 import TrackerCard, { TrackerChip } from './components/TrackerCard'
 import CitedSources, { citedSources, citedWeb, domainOf, WebSources } from './components/Sources'
 import SourceViewer from './components/SourceViewer'
@@ -119,7 +120,7 @@ export default function App() {
   useEffect(() => {
     Promise.all([window.api.loadChats(), window.api.loadSettings(), window.api.loadNotes()]).then(([c, s, n]) => {
       const m: Mode = s.lastMode === 'coach' ? 'coach' : 'chat'
-      setChats(c); setSettings(s); setNotes(n); setWeb(!!s.webSearch?.defaultOn); setMode(m); setActiveId(latestIn(c, m)); setLoaded(true)
+      setChats(c); setSettings(s); setNotes(n); setWeb(!!s.webSearch?.defaultOn); setMode(m); setView(m === 'coach' ? 'today' : 'chat'); setActiveId(latestIn(c, m)); setLoaded(true)
     })
     reloadProjects()
     // Pencereye bırakılan dosya sayfayı o dosyaya götürmesin (bırakma yalnızca proje sayfasında işlenir).
@@ -155,7 +156,8 @@ export default function App() {
 
   function switchMode(m: Mode) {
     if (m === mode || streaming || !settings) return
-    setMode(m); setView('chat'); pruneEmpty(null); setMenu(false)
+    // Koç modu Bugün ekranıyla açılır.
+    setMode(m); setView(m === 'coach' ? 'today' : 'chat'); pruneEmpty(null); setMenu(false)
     setActiveId(latestIn(chats, m)); setDraft(''); setRefId(null); setMention(null); setAttached([])
     const next = { ...settings, lastMode: m }
     setSettings(next); window.api.saveSettings(next)
@@ -168,7 +170,7 @@ export default function App() {
 
   function newChat() {
     if (streaming) return
-    setActiveId(null); setDraft(''); setRefId(null); setMention(null); setWeb(!!settings?.webSearch?.defaultOn); taRef.current?.focus()
+    setView('chat'); setActiveId(null); setDraft(''); setRefId(null); setMention(null); setWeb(!!settings?.webSearch?.defaultOn); setTimeout(() => taRef.current?.focus(), 0)
     if (window.innerWidth <= 760) setSidebar(false)
   }
 
@@ -179,6 +181,8 @@ export default function App() {
 
   function navigate(p: SbPage) {
     setView(p); setMenu(false)
+    // Bugün ekranının kenar çubuğunda seçilecek bir şey yok: dar pencerede doğrudan sayfa açılır.
+    if (p === 'today' && narrow()) setSidebar(false)
     if (p === 'chat') pruneEmpty(null)
     else if (!activeNote) {
       const latest = [...notes].filter((n) => !isEmptyNote(n)).sort((a, b) => b.updatedAt - a.updatedAt)[0]
@@ -400,7 +404,7 @@ export default function App() {
   }
   function pickChat(id: string) {
     if (streaming) return
-    setActiveId(id); setMention(null)
+    setView('chat'); setActiveId(id); setMention(null)
     // sohbetin son mesajında proje seçiliyse yazı alanında da seçili gelsin
     const last = [...(chats.find((c) => c.id === id)?.msgs ?? [])].reverse().find((m) => m.role === 'user')
     setRefId(last?.projectId && projects.some((x) => x.id === last.projectId) ? last.projectId : null)
@@ -618,7 +622,10 @@ export default function App() {
           onClose={() => setSidebar(false)} onSettings={() => setShowSettings(true)} />
       )}
       <main>
-        {view === 'trackers' ? (
+        {view === 'today' ? (
+          <TodayPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} onNewChat={newChat} calTick={calTick} trkTick={trkTick} onTrackersChanged={bumpTrk}
+            providerId={provider?.id} model={provider?.model} onOpenCalendar={(at) => openCalendar({ at })} onOpenTrackers={() => openTrackers()} />
+        ) : view === 'trackers' ? (
           <TrackersPage sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={trkTick} onChanged={bumpTrk} req={trkReq} />
         ) : view === 'calendar' ? (
           <CalendarPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={calTick} onChanged={bumpCal} req={calReq} />

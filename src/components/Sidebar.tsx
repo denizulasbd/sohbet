@@ -5,7 +5,7 @@ import { addDays, dayLabel, startOfDay, startOfWeek, timeLabel } from '../calend
 import { isEmptyNote, noteGroup, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { kbd } from '../platform'
 import { MODES, type Mode } from '../modes'
-import { Back, Calendar, Chat as ChatIcon, Check, Checklist, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
+import { Back, Calendar, Chat as ChatIcon, Check, Checklist, Sun, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
 
 const DAY = 86400000
 function group(ts: number) {
@@ -32,6 +32,7 @@ interface Props {
 // Yeni bölüm eklemek: SbPage'e ekle, buraya bir satır ve aşağıya bir liste gövdesi ekle.
 // (Geniş pencerede üstteki seçici, dar pencerede alttaki sekme çubuğu aynı listeden çizilir.)
 const SECTIONS = [
+  { id: 'today' as const, label: 'Bugün', tab: 'Bugün', Icon: Sun },
   { id: 'chat' as const, label: 'Sohbetler', tab: 'Sohbet', Icon: ChatIcon },
   { id: 'notes' as const, label: 'Notlar', tab: 'Notlar', Icon: FileText },
   { id: 'projects' as const, label: 'Projeler', tab: 'Projeler', Icon: Folder },
@@ -39,15 +40,15 @@ const SECTIONS = [
   { id: 'trackers' as const, label: 'Takip', tab: 'Takip', Icon: Checklist }
 ]
 // Hangi bölüm hangi modda: notlar ve projeler sohbet modunun, takvim koç modunun bölümüdür.
-const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['chat', 'calendar', 'trackers'] }
-const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik', trackers: 'Yeni takip' }
+const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['today', 'chat', 'calendar', 'trackers'] }
+const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik', trackers: 'Yeni takip', today: 'Yeni sohbet' }
 const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }]
 
 export default function Sidebar(p: Props) {
   const sections = SECTIONS.filter((s) => MODE_SECTIONS[p.mode].includes(s.id))
   const cur = SECTIONS.find((s) => s.id === p.view)!
   const newLabel = NEW[p.view]
-  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent, trackers: p.onNewTracker }[p.view]
+  const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent, trackers: p.onNewTracker, today: p.onNew }[p.view]
   return (
     <aside className="side">
       <div className="side-top">
@@ -63,11 +64,11 @@ export default function Sidebar(p: Props) {
       </div>
       {sections.length > 1 && (
         <div className="seg" role="tablist" aria-label="Bölümler">
-          {sections.map((s) => <button key={s.id} role="tab" aria-selected={p.view === s.id} onClick={() => p.onView(s.id)}>{s.label}</button>)}
+          {sections.map((s) => <button key={s.id} role="tab" aria-selected={p.view === s.id} onClick={() => p.onView(s.id)}>{sections.length > 3 ? s.tab : s.label}</button>)}
         </div>
       )}
 
-      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' ? <CalendarList {...p} /> : p.view === 'trackers' ? <TrackerList {...p} /> : <ProjectList {...p} />}
+      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' || p.view === 'today' ? <CalendarList {...p} /> : p.view === 'trackers' ? <TrackerList {...p} /> : <ProjectList {...p} />}
 
       <div className="side-foot">
         <button className="row" onClick={p.onSettings}><Gear size={17} /><span className="t">Ayarlar</span><span className="kbd">{kbd(',')}</span></button>

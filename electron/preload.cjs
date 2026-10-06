@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteTracker: (id) => ipcRenderer.invoke('trackers:delete', id),
   setTrackerDay: (id, date, value) => ipcRenderer.invoke('trackers:setDay', id, date, value),
   deleteTrackerEntry: (id) => ipcRenderer.invoke('trackers:deleteEntry', id),
+  todaySummary: (req) => ipcRenderer.invoke('today:summary', req),
   listProjects: () => ipcRenderer.invoke('projects:list'),
   createProject: (init) => ipcRenderer.invoke('projects:create', init),
   updateProject: (id, patch) => ipcRenderer.invoke('projects:update', id, patch),

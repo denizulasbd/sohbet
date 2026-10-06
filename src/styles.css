@@ -517,6 +517,13 @@ button.qz-opt:hover .qz-l{background:var(--select)}
 .frow.trk-empty{flex-direction:column;align-items:flex-start;gap:12px;padding:14px}
 .trk-tpl{display:flex;flex-wrap:wrap;gap:6px}
 .ev-dlg .fin{text-align:right}
+/* ---- Bugün ekranı (koç modu) ---- */
+.td-date{flex-shrink:0;padding-right:12px;font-size:12.5px}
+.td-sum{display:flex;flex-direction:column;gap:10px;padding:14px 16px 10px;border-radius:12px;background:var(--panel)}
+.td-sum .prose{font-size:14px}
+.td-sum-foot{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.td-past .pj-n,.td-past .pj-st{color:var(--mute)}
+.td-exam{color:var(--accent)}
 /* etkinlik düzenleyici ve önerisi */
 .cn-dlg.ev-dlg{width:min(520px,100%)}
 .ev-dlg .nw-title-in{width:100%;background:var(--panel)}
