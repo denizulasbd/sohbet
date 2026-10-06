@@ -20,7 +20,7 @@ import { contentOf, isEmptyNote, toRef } from './notes'
 import { isMac } from './platform'
 import { detectReasoning, normalizeReasoning } from './reasoning'
 import { fold } from './search'
-import { COACH_NAME, type Mode } from './modes'
+import { COACH_NAME, modulesOf, type Mode } from './modes'
 
 /** İmlecin hemen solunda yazılmakta olan "@sorgu" (satır başında ya da boşluktan sonra başlamalı). */
 function mentionAt(text: string, caret: number): { start: number; q: string } | null {
@@ -90,7 +90,8 @@ export default function App() {
   notesRef.current = notes
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [attached, setAttached] = useState<NoteRef[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
+  // Projeler moda göre ayrılır: yaşam projeleri yalnızca koç modunda, diğerleri yalnızca akademik modda görünür (projects: o anki modun projeleri).
+  const [allProjects, setProjects] = useState<Project[]>([])
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   // Sohbette @ ile seçilen proje: gönderince mesajla gider; aynı sohbetin sonraki mesajlarında da seçili kalır.
   const [refId, setRefId] = useState<string | null>(null)
@@ -112,6 +113,10 @@ export default function App() {
   const coachCfg = mode === 'coach' ? settings?.modes?.coach : undefined
   const baseProvider = settings?.providers.find((p) => p.id === coachCfg?.providerId) ?? settings?.providers.find((p) => p.id === settings.activeProvider)
   const provider = baseProvider && coachCfg?.model && baseProvider.id === coachCfg.providerId ? { ...baseProvider, model: coachCfg.model } : baseProvider
+  const mods = modulesOf(settings)
+  const projects = useMemo(() => allProjects.filter((p) => (p.kind === 'yasam') === (mode === 'coach')), [allProjects, mode])
+  // Notlar da projesinin moduna aittir; projesiz ("Genel") notlar akademik moddadır.
+  const modeNotes = useMemo(() => notes.filter((n) => (allProjects.find((p) => p.id === n.projectId)?.kind === 'yasam') === (mode === 'coach')), [notes, allProjects, mode])
   const modeChats = useMemo(() => chats.filter((c) => (c.mode ?? 'chat') === mode), [chats, mode])
   const rcfg = normalizeReasoning(settings?.reasoning)
   const reasonSave = useRef<ReturnType<typeof setTimeout>>()
@@ -119,7 +124,7 @@ export default function App() {
   // yükle
   useEffect(() => {
     Promise.all([window.api.loadChats(), window.api.loadSettings(), window.api.loadNotes()]).then(([c, s, n]) => {
-      const m: Mode = s.lastMode === 'coach' ? 'coach' : 'chat'
+      const m: Mode = s.lastMode === 'coach' && modulesOf(s).coach ? 'coach' : 'chat'
       setChats(c); setSettings(s); setNotes(n); setWeb(!!s.webSearch?.defaultOn); setMode(m); setView(m === 'coach' ? 'today' : 'chat'); setActiveId(latestIn(c, m)); setLoaded(true)
     })
     reloadProjects()
@@ -162,6 +167,12 @@ export default function App() {
     const next = { ...settings, lastMode: m }
     setSettings(next); window.api.saveSettings(next)
   }
+  // Bir modül ayarlardan kapatılınca açık kalan ekranı varsa terk edilir.
+  useEffect(() => {
+    if (!settings) return
+    if (!mods.coach && mode === 'coach') { setMode('chat'); setView('chat'); setActiveId(latestIn(chats, 'chat')); setRefId(null); setAttached([]) }
+    else if ((view === 'calendar' && !mods.calendar) || (view === 'trackers' && !mods.trackers)) setView(mode === 'coach' ? 'today' : 'chat')
+  }, [mods.coach, mods.calendar, mods.trackers])
   function ackCoachNotice() {
     if (!settings) return
     const next = { ...settings, coachNoticeSeen: true }
@@ -219,7 +230,7 @@ export default function App() {
   const activeProject = projects.find((x) => x.id === activeProjectId) ?? null
   async function newProject() {
     try {
-      const pr = await window.api.createProject({ kind: 'ders' })
+      const pr = await window.api.createProject({ kind: mode === 'coach' ? 'yasam' : 'ders' })
       setProjects((ps) => [...ps, pr]); setActiveProjectId(pr.id); setView('projects')
       if (narrow()) setSidebar(false)
     } catch { alert('Proje oluşturulamadı. Uygulamayı yeniden başlatıp tekrar deneyin.') }
@@ -394,7 +405,7 @@ export default function App() {
     return projects.filter((x) => fold(x.name).includes(q)).sort((a, b) => Number(fold(b.name).startsWith(q)) - Number(fold(a.name).startsWith(q))).slice(0, 8)
   }, [mention, projects])
   const mentionOpen = !!mention && (matches.length > 0 || (projects.length === 0 && !mention.q))
-  function syncMention(text: string, caret: number) { setMention(mode === 'coach' ? null : mentionAt(text, caret)); setMIdx(0) }
+  function syncMention(text: string, caret: number) { setMention(mentionAt(text, caret)); setMIdx(0) }
   function chooseProject(pr: Project) {
     if (!mention) return
     const caret = taRef.current?.selectionStart ?? draft.length
@@ -414,7 +425,7 @@ export default function App() {
   function run(chatId: string, history: Msg[]) {
     if (!settings || !provider) return
     const lastUser = [...history].reverse().find((m) => m.role === 'user')
-    const projectId = mode !== 'coach' && lastUser?.projectId && projects.some((x) => x.id === lastUser.projectId) ? lastUser.projectId : undefined
+    const projectId = lastUser?.projectId && projects.some((x) => x.id === lastUser.projectId) ? lastUser.projectId : undefined
     const botId = uid()
     const started = Date.now()
     let acc = '', thinkAcc = ''
@@ -489,8 +500,8 @@ export default function App() {
     let text = draft.trim()
     if (!text || streaming || !settings) return
     // Menüden seçilmeden elle yazılmış "@Proje Adı" da proje seçimi sayılır ve metinden çıkarılır.
-    let ref = mode === 'coach' ? null : projectRef
-    if (!ref && mode !== 'coach') {
+    let ref = projectRef
+    if (!ref) {
       const f = fold(text)
       for (const pr of [...projects].sort((a, b) => b.name.length - a.name.length)) {
         const i = f.indexOf('@' + fold(pr.name))
@@ -615,20 +626,20 @@ export default function App() {
           chats={modeChats} activeId={activeId}
           onPick={pickChat}
           onNew={newChat} onDelete={del}
-          notes={notes} activeNoteId={activeNoteId} onPickNote={pickNote} onNewNote={newNote} onDeleteNote={delNote}
-          projects={projects} activeProjectId={activeProjectId} onPickProject={pickProject} onNewProject={newProject} onDeleteProject={delProject}
+          notes={modeNotes} activeNoteId={activeNoteId} onPickNote={pickNote} onNewNote={newNote} onDeleteNote={delNote}
+          modules={mods} projects={projects} activeProjectId={activeProjectId} onPickProject={pickProject} onNewProject={newProject} onDeleteProject={delProject}
           trkTick={trkTick} onOpenTrackers={() => openTrackers()} onNewTracker={() => openTrackers(true)}
           calTick={calTick} onPickEvent={(at) => openCalendar({ at })} onNewEvent={() => openCalendar({ create: {} })}
           onClose={() => setSidebar(false)} onSettings={() => setShowSettings(true)} />
       )}
       <main>
         {view === 'today' ? (
-          <TodayPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} onNewChat={newChat} calTick={calTick} trkTick={trkTick} onTrackersChanged={bumpTrk}
+          <TodayPage showCalendar={mods.calendar} showTrackers={mods.trackers} projects={allProjects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} onNewChat={newChat} calTick={calTick} trkTick={trkTick} onTrackersChanged={bumpTrk}
             providerId={provider?.id} model={provider?.model} onOpenCalendar={(at) => openCalendar({ at })} onOpenTrackers={() => openTrackers()} />
         ) : view === 'trackers' ? (
           <TrackersPage sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={trkTick} onChanged={bumpTrk} req={trkReq} />
         ) : view === 'calendar' ? (
-          <CalendarPage projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={calTick} onChanged={bumpCal} req={calReq} />
+          <CalendarPage projects={allProjects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)} tick={calTick} onChanged={bumpCal} req={calReq} />
         ) : view === 'notes' ? (
           <NoteEditor note={activeNote} projects={projects} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)}
             onChange={(patch) => activeNote && patchNote(activeNote.id, patch)}
@@ -637,7 +648,7 @@ export default function App() {
           <ProjectPage project={activeProject} notes={notes} sidebar={sidebar} onOpenSidebar={() => setSidebar(true)}
             onUpdate={(patch) => activeProject && updateProject(activeProject.id, patch)}
             onDelete={() => activeProject && delProject(activeProject.id)} onNew={newProject} onOpenNote={openNote} onOpenFile={openFile} onFilesChanged={reloadProjects}
-            providerId={provider?.id} model={provider?.model} onOpenSource={openSource} calTick={calTick} />
+            providerId={provider?.id} model={provider?.model} onOpenSource={openSource} calTick={calTick} showCalendar={mods.calendar} />
         ) : <>
         <header className={'top' + (sidebar ? '' : ' bare')}>
           <div className="top-l">
@@ -719,12 +730,12 @@ export default function App() {
                   {m.noteOps?.map((op) => op.target === 'tracker' || op.target === 'entry'
                     ? op.status === 'pending' && streaming && idx === active.msgs.length - 1
                       ? <TrackerCard key={op.id} op={op} onSave={() => commitTrackerOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
-                      : <TrackerChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onOpen={() => openTrackers()} onUndo={() => undoTrackerOp(active.id, m.id, op)} />
+                      : <TrackerChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onOpen={() => { if (mode === 'coach' && mods.trackers) openTrackers() }} onUndo={() => undoTrackerOp(active.id, m.id, op)} />
                     : op.target === 'event'
                     ? op.status === 'pending' && streaming && idx === active.msgs.length - 1
-                      ? <EventCard key={op.id} op={op} projects={projects} onSave={() => commitEventOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
+                      ? <EventCard key={op.id} op={op} projects={allProjects} onSave={() => commitEventOp(active.id, m.id, op)} onCancel={() => cancelOp(active.id, m.id, op)} />
                       : <EventChip key={op.id} op={op.status === 'pending' ? { ...op, status: 'cancelled' } : op} onUndo={() => undoEventOp(active.id, m.id, op)}
-                          onOpen={mode === 'coach' && op.kind !== 'delete' && op.event ? () => openCalendar({ at: op.event!.startAt }) : undefined} />
+                          onOpen={mode === 'coach' && mods.calendar && op.kind !== 'delete' && op.event ? () => openCalendar({ at: op.event!.startAt }) : undefined} />
                     : op.status === 'pending' && streaming && idx === active.msgs.length - 1 && !op.auto
                     ? <NoteCard key={op.id} op={op} projects={projects} current={op.kind === 'edit' ? notes.find((n) => n.id === op.noteId)?.body : undefined} onSave={(edit) => commitOp(active.id, m.id, op, edit)} onCancel={() => cancelOp(active.id, m.id, op)} onLink={openLink} />
                     : op.status === 'pending' && streaming && idx === active.msgs.length - 1 ? null
@@ -776,7 +787,7 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <textarea id="composer" ref={taRef} rows={2} placeholder={mode === 'coach' ? 'Mesajınızı yazın' : 'Mesajınızı yazın · @ ile proje seçin'} value={draft}
+              <textarea id="composer" ref={taRef} rows={2} placeholder="Mesajınızı yazın · @ ile proje seçin" value={draft}
                 onChange={(e) => { setDraft(e.target.value); syncMention(e.target.value, e.target.selectionStart) }}
                 onClick={(e) => syncMention(e.currentTarget.value, e.currentTarget.selectionStart)}
                 onBlur={() => setMention(null)}
@@ -790,7 +801,7 @@ export default function App() {
                 }} />
               <div className="box-bar">
                 <ReasoningControl cfg={rcfg} onChange={setReasoning} />
-                {mode !== 'coach' && <NotePicker notes={notes} attached={attached} onToggle={toggleAttach} onOpenNotes={() => navigate('notes')} />}
+                <NotePicker notes={modeNotes} attached={attached} onToggle={toggleAttach} onOpenNotes={() => navigate('notes')} />
                 {/* devre dışıyken düğme fare olaylarını almaz; açıklama sarmalayıcıdan görünür */}
                 <span className="rz-ctl-wrap" title={webOk.ok ? (web ? 'Web araması açık: model gerektiğinde web\'de arar' : 'Web araması kapalı') : webOk.reason ?? 'Web araması yalnızca OpenRouter modellerinde kullanılabilir'}>
                   <button className={'pill wb-btn' + (web && webOk.ok ? ' on' : '')} aria-pressed={web && webOk.ok} aria-label="Web araması" disabled={!webOk.ok} onClick={() => setWeb((w) => !w)}>

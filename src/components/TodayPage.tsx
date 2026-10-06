@@ -14,11 +14,13 @@ interface Props {
   /** Özet o an koç modunda seçili sağlayıcı ve modelle üretilir. */
   providerId?: string; model?: string
   onOpenCalendar(at: number): void; onOpenTrackers(): void
+  /** Kapalı modülün bölümü çizilmez ve verisi istenmez. */
+  showCalendar: boolean; showTrackers: boolean
 }
 type Summary = { text: string; createdAt: number } | { error: string } | null
 
 /** Koç modunun ana sayfası: günün özeti, bugünün etkinlikleri, yaklaşan sınav ve ödevler, bugünün takipleri. */
-export default function TodayPage({ projects, sidebar, onOpenSidebar, onNewChat, calTick, trkTick, onTrackersChanged, providerId, model, onOpenCalendar, onOpenTrackers }: Props) {
+export default function TodayPage({ projects, sidebar, onOpenSidebar, onNewChat, calTick, trkTick, onTrackersChanged, providerId, model, onOpenCalendar, onOpenTrackers, showCalendar, showTrackers }: Props) {
   const today = startOfDay(Date.now())
   const [events, setEvents] = useState<EventOcc[]>([])
   const [soon, setSoon] = useState<EventOcc[]>([])
@@ -28,16 +30,18 @@ export default function TodayPage({ projects, sidebar, onOpenSidebar, onNewChat,
   const idx = Math.round((today - startOfWeek(today)) / 86400000)
 
   useEffect(() => {
+    if (!showCalendar) { setEvents([]); setSoon([]); return }
     let live = true
     window.api.listEvents(today, addDays(today, 1)).then((l) => { if (live) setEvents(l) }).catch(() => {})
     window.api.listEvents(addDays(today, 1), addDays(today, 8)).then((l) => { if (live) setSoon(l.filter((o) => o.kind === 'sinav' || o.kind === 'odev')) }).catch(() => {})
     return () => { live = false }
-  }, [calTick, today])
+  }, [calTick, today, showCalendar])
   useEffect(() => {
+    if (!showTrackers) { setTrackers([]); return }
     let live = true
     window.api.listTrackers(ymd(today)).then((l) => { if (live) setTrackers(l) }).catch(() => {})
     return () => { live = false }
-  }, [trkTick, today])
+  }, [trkTick, today, showTrackers])
 
   // Özet: bugün üretilmişse önbellekten anında gelir; değilse bir kez üretilir. "Yenile" yeniden üretir.
   function loadSummary(force: boolean) {
@@ -77,13 +81,13 @@ export default function TodayPage({ projects, sidebar, onOpenSidebar, onNewChat,
                 : sum && 'error' in sum ? <div className="memo bad"><span>Özet hazırlanamadı · {sum.error}</span></div>
                 : <div className="memo kn-live"><span>Özet hazırlanıyor…</span></div>}
               <div className="td-sum-foot">
-                <span className="note">{sum && 'text' in sum ? `Bugün ${hm(sum.createdAt)} itibarıyla · yapay zekâ özeti, hata yapabilir` : 'Takvim, takipler ve hafızadan günde bir kez üretilir'}</span>
+                <span className="note">{sum && 'text' in sum ? `Bugün ${hm(sum.createdAt)} itibarıyla · yapay zekâ özeti, hata yapabilir` : 'Günde bir kez üretilir'}</span>
                 <button className="pill sm" disabled={busy} title="Özeti yeniden üret" onClick={() => loadSummary(true)}><Redo size={14} />{busy && sum ? 'Yenileniyor…' : 'Yenile'}</button>
               </div>
             </div>
           </section>
 
-          <section className="stack">
+          {showCalendar && <><section className="stack">
             <span className="label gl">BUGÜNÜN ETKİNLİKLERİ{events.length ? ` · ${events.length}` : ''}</span>
             <div className="group">
               {events.length === 0 && <div className="frow"><span className="note">Bugün için takvimde etkinlik yok.</span></div>}
@@ -109,13 +113,15 @@ export default function TodayPage({ projects, sidebar, onOpenSidebar, onNewChat,
             </div>
           </section>
 
-          <section className="stack">
+          </>}
+
+          {showTrackers && <section className="stack">
             <span className="label gl">BUGÜNÜN TAKİPLERİ</span>
             <div className="group">
               {trackers.length === 0 && <button className="frow pj-open" onClick={onOpenTrackers}><span className="note">Henüz takip yok. Su, uyku ya da antrenman gibi bir takip eklemek için dokunun.</span></button>}
               {trackers.map((t) => <TrackerRow key={t.id} t={t} idx={idx} dayKey={today} onSet={(v) => setValue(t, v)} onEdit={onOpenTrackers} />)}
             </div>
-          </section>
+          </section>}
         </div>
       </div>
     </>

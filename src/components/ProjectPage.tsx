@@ -21,6 +21,8 @@ interface Props {
   onOpenSource(s: SourceRef): void
   /** Takvim değişince projeye bağlı etkinlikler yenilenir. */
   calTick: number
+  /** Takvim modülü kapalıysa bağlı etkinlikler gösterilmez. */
+  showCalendar: boolean
 }
 
 const KINDS: { id: ProjectKind; label: string }[] = [{ id: 'ders', label: 'Ders' }, { id: 'kisisel', label: 'Kişisel proje' }]
@@ -35,17 +37,17 @@ function fmtSize(n: number) {
 }
 const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
 
-export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, onUpdate, onDelete, onNew, onOpenNote, onOpenFile, onFilesChanged, providerId, model, onOpenSource, calTick }: Props) {
+export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, onUpdate, onDelete, onNew, onOpenNote, onOpenFile, onFilesChanged, providerId, model, onOpenSource, calTick, showCalendar }: Props) {
   // Projeye bağlı yaklaşan etkinlikler (sınav, ödev, ders): takvim koç modundadır, burada yalnızca gösterilir.
   const [events, setEvents] = useState<EventOcc[]>([])
   useEffect(() => {
     setEvents([])
-    if (!project) return
+    if (!project || !showCalendar) return
     let live = true
     const today = startOfDay(Date.now())
     window.api.listEvents(today, addDays(today, 180)).then((l) => { if (live) setEvents(l.filter((o) => o.projectId === project.id).slice(0, 8)) }).catch(() => {})
     return () => { live = false }
-  }, [project?.id, calTick])
+  }, [project?.id, calTick, showCalendar])
   const [files, setFiles] = useState<ArchiveFile[]>([])
   const [prog, setProg] = useState<Record<string, { page: number; total: number }>>({})
   const [ocr, setOcr] = useState<Record<string, { done: number; total: number; finished?: boolean; error?: string }>>({})
@@ -161,7 +163,7 @@ export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, on
         <div className="top-r">
           {project && quiz && <button className="pill" aria-label="Projeye dön" title="Projeye dön" onClick={() => { setQuiz(null); reloadQuizzes() }}><Back size={16} /><span className="pl">Projeye dön</span></button>}
           {project && !quiz && <>
-            <button className="pill" aria-label="Quiz oluştur" title="Bu projenin dosya ve notlarından quiz oluştur" onClick={() => setSetup(true)}><Quiz size={16} /><span className="pl">Quiz oluştur</span></button>
+            {project.kind !== 'yasam' && <button className="pill" aria-label="Quiz oluştur" title="Bu projenin dosya ve notlarından quiz oluştur" onClick={() => setSetup(true)}><Quiz size={16} /><span className="pl">Quiz oluştur</span></button>}
             <button className="pill" aria-label="Dosya ekle" title={`Dosya ekle (${FORMATS})`} onClick={pick}><Plus size={16} /><span className="pl">Dosya ekle</span></button>
             <button className="circle" aria-label="Projeyi sil" title="Projeyi sil" onClick={onDelete}><Trash size={16} /></button>
           </>}
@@ -192,9 +194,9 @@ export default function ProjectPage({ project, notes, sidebar, onOpenSidebar, on
               <input ref={titleRef} className="nt-title" aria-label="Proje adı" placeholder="Proje adı" value={name} maxLength={120}
                 onChange={(e) => setName(e.target.value)} onBlur={commitName}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur(); if (e.key === 'Escape') { setName(project.name); e.currentTarget.blur() } }} />
-              <div className="seg sm" role="group" aria-label="Proje türü">
+              {project.kind !== 'yasam' && <div className="seg sm" role="group" aria-label="Proje türü">
                 {KINDS.map((k) => <button key={k.id} aria-pressed={project.kind === k.id} onClick={() => project.kind !== k.id && onUpdate({ kind: k.id })}>{k.label}</button>)}
-              </div>
+              </div>}
             </div>
 
             <label className="search pj-search">

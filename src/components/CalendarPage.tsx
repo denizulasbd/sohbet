@@ -183,7 +183,7 @@ export default function CalendarPage({ projects, sidebar, onOpenSidebar, tick, o
                 <label className="frow"><span className="fl">Proje</span>
                   <select className="fin" value={projects.some((p) => p.id === f.projectId) ? f.projectId : ''} onChange={(e) => set({ projectId: e.target.value })}>
                     <option value="">Bağlı değil</option>
-                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {projects.filter((p) => p.kind !== 'yasam').map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
               )}

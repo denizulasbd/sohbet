@@ -37,7 +37,8 @@ export interface EventInput { title: string; kind: EventKind; startAt: number; e
 export interface CalEvent extends EventInput { id: string; createdBy: 'user' | 'ai'; createdAt: number }
 /** Etkinliğin takvimde görünen bir günü: at/until o günün başlangıcı ve bitişi. */
 export interface EventOcc extends CalEvent { at: number; until: number | null }
-export type ProjectKind = 'ders' | 'kisisel'
+/** 'yasam': koç modunun projeleri (Spor, Beslenme…); yalnızca koç modunda listelenir. */
+export type ProjectKind = 'ders' | 'kisisel' | 'yasam'
 export interface Project { id: string; name: string; kind: ProjectKind; createdAt: number; fileCount: number }
 export type FileStatus = 'queued' | 'processing' | 'ready' | 'error'
 /** Arşivdeki dosya. ocrPages: metni çıkarılamayan (taranmış) sayfa sayısı; pageCount düz metinde null. */
@@ -111,7 +112,9 @@ export interface MemoryStore { enabled: boolean; items: MemoryItem[] }
 /** Koç modunun kendi talimatı ve modeli. providerId/model yoksa sohbet modunun sağlayıcısı ve modeli kullanılır. */
 export interface CoachSettings { systemPrompt: string; providerId?: string; model?: string }
 /** lastMode: son kullanılan mod · coachNoticeSeen: koç moduna ilk girişteki uyarı görüldü. */
-export interface Settings { modes?: { coach?: CoachSettings }; lastMode?: Mode; coachNoticeSeen?: boolean; activeProvider: string; providers: Provider[]; systemPrompt: string; reasoning?: ReasoningConfig; archive?: ArchiveSettings; webSearch?: { defaultOn: boolean }; notes?: { autoCreate: boolean } }
+/** Kapatılabilen modüller (yoksa açık). Takvim ve takip koç modunun parçasıdır: koç modu kapalıyken onlar da kapalıdır. */
+export interface ModuleSettings { coach?: boolean; calendar?: boolean; trackers?: boolean }
+export interface Settings { modules?: ModuleSettings; modes?: { coach?: CoachSettings }; lastMode?: Mode; coachNoticeSeen?: boolean; activeProvider: string; providers: Provider[]; systemPrompt: string; reasoning?: ReasoningConfig; archive?: ArchiveSettings; webSearch?: { defaultOn: boolean }; notes?: { autoCreate: boolean } }
 
 declare global {
   interface Window {

@@ -91,6 +91,12 @@ function explainError(message, provider) {
 }
 
 // mode 'coach': kullanıcının koç moduna özel talimatları ve sabit koç kuralları kullanılır (bkz. coach.cjs).
+// Modüller (Ayarlar → Modüller): koç modu tümüyle, takvim ve takip ayrı ayrı kapatılabilir. Takvim ve takip koç modunun parçasıdır.
+function modulesOf(s) {
+  const coach = s.modules?.coach !== false
+  return { coach, calendar: coach && s.modules?.calendar !== false, trackers: coach && s.modules?.trackers !== false }
+}
+
 function buildSystem(s, mode) {
   const mem = loadMemory()
   const own = mode === 'coach' ? s.modes?.coach?.systemPrompt : s.systemPrompt
@@ -210,8 +216,11 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('open:external', (_e, url) => openExternal(url))
 
-  ipcMain.on('chat:stream', async (e, { requestId, messages, providerId, model, reasoning, projectId, userText, sources, web, webSources, mode }) => {
+  ipcMain.on('chat:stream', async (e, { requestId, messages, providerId, model, reasoning, projectId, userText, sources, web, webSources, mode: reqMode }) => {
     const s = withPlainKeys(loadSettings())
+    // Kapalı bir modülün araçları modele gönderilmez; koç modu kapalıysa her istek akademik moddadır.
+    const mods = modulesOf(s)
+    const mode = mods.coach && reqMode === 'coach' ? 'coach' : 'chat'
     const p = s.providers.find((x) => x.id === providerId)
     const send = (ch, payload) => { if (!e.sender.isDestroyed()) e.sender.send(ch, { requestId, ...payload }) }
     if (!p) return send('chat:error', { message: 'Sağlayıcı bulunamadı.' })
@@ -242,9 +251,10 @@ app.whenReady().then(() => {
         onThinking: mark((t) => send('chat:thinking', { token: t }))
       }
       // @proje seçiliyse model proje içinde araçlarla arar; proje silinmişse ya da arşiv açılamadıysa normal sohbet.
-      // Koç modunda proje, arşiv ve not araçları gönderilmez; web araması iki modda da kullanılabilir.
+      // @proje ve not araçları iki modda da çalışır: akademik modda ders/kişisel projeler, koç modunda yaşam projeleri.
       const coach = mode === 'coach'
-      const knowledge = !coach && projectId && archive ? require('./knowledge.cjs') : null
+      const modeProjects = archive ? archive.projectNames().filter((x) => (x.kind === 'yasam') === coach) : []
+      const knowledge = projectId && archive && modeProjects.some((x) => x.id === projectId) ? require('./knowledge.cjs') : null
       const readNotes = () => readJson(notesFile(), [])
       const session = knowledge?.open(projectId, sources, readNotes)
       const emit = (ch, payload) => { started = true; send('chat:' + ch, payload) }
@@ -265,14 +275,15 @@ app.whenReady().then(() => {
       const onUsage = (u) => { sub.inputTokens += u?.inputTokens || 0; sub.outputTokens += u?.outputTokens || 0; if (u?.cost != null) sub.cost = (sub.cost || 0) + u.cost }
       const canTool = !noTools.has(toolKey) && (await supportsTools(provider))
       const memStore = loadMemory()
-      const memTool = canTool && memStore.enabled ? memoryTools.create({ items: memoryTools.searchable(memStore.items, mode), mode, emit }) : null
-      const noteTools = !coach && canTool
-        ? require('./note-tools.cjs').create({ onUsage, session, sources, readNotes, provider, signal: ctrl.signal, emit, propose, projects: archive ? archive.projectNames() : [], autoCreate: !!s.notes?.autoCreate })
+      const memTool = canTool && mods.coach && memStore.enabled ? memoryTools.create({ items: memoryTools.searchable(memStore.items, mode), mode, emit }) : null
+      const noteTools = canTool
+        ? require('./note-tools.cjs').create({ onUsage, session, sources, readNotes, provider, signal: ctrl.signal, emit, propose, projects: modeProjects, autoCreate: !!s.notes?.autoCreate })
         : null
       // Takvim araçları iki modda da vardır; yazma önerileri not önerileriyle aynı onay hattından geçer.
-      const calTools = canTool && archive ? require('./calendar.cjs').createTools({ propose, emit, projects: archive.projectNames(), session, signal: ctrl.signal }) : null
+      // Etkinlikler yalnızca akademik projelere bağlanır; koç modunda @proje (yaşam projesi) etkinliğe bağ olmaz.
+      const calTools = canTool && archive && mods.calendar ? require('./calendar.cjs').createTools({ propose, emit, projects: archive.projectNames().filter((x) => x.kind !== 'yasam'), session: coach ? null : session, signal: ctrl.signal }) : null
       // Takip araçları yalnızca koç modundadır.
-      const trkTools = coach && canTool && archive ? require('./trackers.cjs').createTools({ propose, emit, signal: ctrl.signal }) : null
+      const trkTools = coach && canTool && archive && mods.trackers ? require('./trackers.cjs').createTools({ propose, emit, signal: ctrl.signal }) : null
       // Modele verilen uygulama araçları: not yazma (sohbet modu) + takvim + takip (koç modu) + diğer modun hafızasında arama.
       const notes = [noteTools, calTools, trkTools, memTool].reduce(memoryTools.combine, null)
       const go = (withWeb, withNotes) => {
@@ -369,7 +380,7 @@ app.whenReady().then(() => {
       if (!p) throw new Error('Sağlayıcı bulunamadı.')
       const mem = loadMemory()
       return await require('./today.cjs').summary({
-        force: !!force,
+        force: !!force, modules: modulesOf(loadSettings()),
         memory: mem.enabled ? memoryTools.inPrompt(mem.items, 'coach').map((i) => i.text) : [],
         complete: (system, user) => completeText({ ...p, model: model || p.model }, system, user, AbortSignal.timeout(60000))
       })

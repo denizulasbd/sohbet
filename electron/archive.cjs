@@ -16,7 +16,7 @@ const TYPES = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 }
-const KINDS = ['ders', 'kisisel']
+const KINDS = ['ders', 'kisisel', 'yasam'] // 'yasam': koç modunun projeleri (Spor, Beslenme…)
 
 let db, dataDir
 const abs = (stored) => path.join(dataDir, stored)
@@ -218,6 +218,6 @@ function register(dir, opts = {}) {
 }
 
 /** Not yazma araçları için: model projeyi adıyla verir, eşleştirme uygulamada yapılır. */
-const projectNames = () => (db ? db.prepare('SELECT id, name FROM projects ORDER BY name COLLATE NOCASE').all() : [])
+const projectNames = () => (db ? db.prepare('SELECT id, name, kind FROM projects ORDER BY name COLLATE NOCASE').all() : [])
 
 module.exports = { register, configure, syncNotes: search.syncNotes, projectNames }

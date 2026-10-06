@@ -25,14 +25,15 @@ const SYSTEM = `${COACH_RULES}
 - Hiç veri yoksa bunu tek cümleyle söyle ve takvime bir etkinlik ya da bir takip eklemeyi öner.`
 
 /** Özetin dayandığı veriler, modele verilecek düz metin olarak. */
-function context(memory) {
+function context(memory, modules) {
   const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), end = start + 86400000
   const projects = new Map(db.prepare('SELECT id, name FROM projects').all().map((p) => [p.id, p.name]))
   const line = (o, withDay) => `- ${withDay ? dayText(o.at) + ' ' : ''}${o.allDay ? 'tüm gün' : hm(o.at) + (o.until ? '–' + hm(o.until) : '')} · ${KIND_LABEL[o.kind] || 'Diğer'}: ${o.title}${projects.get(o.projectId) ? ` (${projects.get(o.projectId)})` : ''}`
-  const todays = calendar.list(start, end)
-  const soon = calendar.list(end, start + 8 * 86400000).filter((o) => o.kind === 'sinav' || o.kind === 'odev')
+  const cal = modules?.calendar !== false, trkOn = modules?.trackers !== false
+  const todays = cal ? calendar.list(start, end) : []
+  const soon = cal ? calendar.list(end, start + 8 * 86400000).filter((o) => o.kind === 'sinav' || o.kind === 'odev') : []
   const idx = (now.getDay() + 6) % 7
-  const trk = trackers.list().map((t) => {
+  const trk = (trkOn ? trackers.list() : []).map((t) => {
     const v = t.days[idx] ?? 0, unit = t.unit ? ' ' + t.unit : ''
     const todayText = t.kind === 'check' ? (v > 0 ? 'bugün yapıldı' : 'bugün henüz yapılmadı') : `bugün ${num(v)}${unit}`
     const goal = t.target ? ` · hedef: ${t.frequency === 'weekly' ? 'haftada' : 'günde'} ${num(t.target)}${t.kind === 'check' ? ' gün' : unit}` : ''
@@ -40,9 +41,8 @@ function context(memory) {
   })
   return [
     `Bugün: ${dayText(now.getTime())}, saat ${hm(now.getTime())}.`,
-    `BUGÜNÜN ETKİNLİKLERİ:\n${todays.map((o) => line(o, false)).join('\n') || '(yok)'}`,
-    `ÖNÜMÜZDEKİ 7 GÜNDE SINAV VE ÖDEVLER:\n${soon.map((o) => line(o, true)).join('\n') || '(yok)'}`,
-    `TAKİPLER:\n${trk.join('\n') || '(takip yok)'}`,
+    ...(cal ? [`BUGÜNÜN ETKİNLİKLERİ:\n${todays.map((o) => line(o, false)).join('\n') || '(yok)'}`, `ÖNÜMÜZDEKİ 7 GÜNDE SINAV VE ÖDEVLER:\n${soon.map((o) => line(o, true)).join('\n') || '(yok)'}`] : []),
+    ...(trkOn ? [`TAKİPLER:\n${trk.join('\n') || '(takip yok)'}`] : []),
     `HAFIZA KAYITLARI:\n${(memory || []).slice(0, 40).map((t) => '- ' + t).join('\n') || '(yok)'}`
   ].join('\n\n')
 }
@@ -54,13 +54,13 @@ function cached() {
 
 /** Bugünün özeti: { date, text, createdAt }. force değilse ve bugün üretilmişse önbellekteki döner.
  *  memory: koç modunun görebildiği hafıza metinleri · complete(system, user) → modelin cevabı. */
-async function summary({ force, memory, complete }) {
+async function summary({ force, memory, complete, modules }) {
   if (!db) throw new Error('Veritabanı açılamadı.')
   const hit = force ? null : cached()
   if (hit) return hit
   // Aynı anda gelen istekler (ör. ekran iki kez açılırsa) tek model çağrısını paylaşır.
   if (!running) running = (async () => {
-    const text = String(await complete(SYSTEM, context(memory))).replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+    const text = String(await complete(SYSTEM, context(memory, modules))).replace(/<think>[\s\S]*?<\/think>/g, '').trim()
     if (!text) throw new Error('Model boş cevap döndürdü.')
     const out = { date: today(), text, createdAt: Date.now() }
     db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(KEY, JSON.stringify(out))

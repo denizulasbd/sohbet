@@ -9,7 +9,7 @@ const MIGRATIONS = [
   `CREATE TABLE projects (
      id TEXT PRIMARY KEY,
      name TEXT NOT NULL,
-     kind TEXT NOT NULL DEFAULT 'ders',      -- 'ders' | 'kisisel'
+     kind TEXT NOT NULL DEFAULT 'ders',      -- 'ders' | 'kisisel' | 'yasam' (koç modunun projeleri; sonradan eklendi, şema değişmedi)
      created_at INTEGER NOT NULL
    );
    CREATE TABLE files (

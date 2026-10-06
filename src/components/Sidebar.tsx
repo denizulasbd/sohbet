@@ -4,7 +4,7 @@ import { num } from '../trackers'
 import { addDays, dayLabel, startOfDay, startOfWeek, timeLabel } from '../calendar'
 import { isEmptyNote, noteGroup, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { kbd } from '../platform'
-import { MODES, type Mode } from '../modes'
+import { MODES, type Mode, type Modules } from '../modes'
 import { Back, Calendar, Chat as ChatIcon, Check, Checklist, Sun, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
 
 const DAY = 86400000
@@ -19,6 +19,8 @@ function group(ts: number) {
 interface Props {
   view: SbPage; onView(p: SbPage): void
   mode: Mode; onMode(m: Mode): void
+  /** Açık modüller: kapalı olanın bölümü (ve koç modu kapalıysa mod geçişi) çizilmez. */
+  modules: Modules
   chats: Chat[]; activeId: string | null; onPick(id: string): void; onNew(): void; onDelete(id: string): void
   notes: Note[]; activeNoteId: string | null; onPickNote(id: string): void; onNewNote(): void; onDeleteNote(id: string): void
   projects: Project[]; activeProjectId: string | null; onPickProject(id: string): void; onNewProject(): void; onDeleteProject(id: string): void
@@ -40,12 +42,13 @@ const SECTIONS = [
   { id: 'trackers' as const, label: 'Takip', tab: 'Takip', Icon: Checklist }
 ]
 // Hangi bölüm hangi modda: notlar ve projeler sohbet modunun, takvim koç modunun bölümüdür.
-const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['today', 'chat', 'calendar', 'trackers'] }
+const MODE_SECTIONS: Record<Mode, SbPage[]> = { chat: ['chat', 'notes', 'projects'], coach: ['today', 'chat', 'calendar', 'trackers', 'projects'] }
 const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje', calendar: 'Yeni etkinlik', trackers: 'Yeni takip', today: 'Yeni sohbet' }
-const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }]
+const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }, { kind: 'yasam', name: 'YAŞAM PROJELERİ' }]
 
 export default function Sidebar(p: Props) {
-  const sections = SECTIONS.filter((s) => MODE_SECTIONS[p.mode].includes(s.id))
+  const sections = SECTIONS.filter((s) => MODE_SECTIONS[p.mode].includes(s.id) && (s.id !== 'calendar' || p.modules.calendar) && (s.id !== 'trackers' || p.modules.trackers))
+    .sort((a, b) => MODE_SECTIONS[p.mode].indexOf(a.id) - MODE_SECTIONS[p.mode].indexOf(b.id))
   const cur = SECTIONS.find((s) => s.id === p.view)!
   const newLabel = NEW[p.view]
   const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject, calendar: p.onNewEvent, trackers: p.onNewTracker, today: p.onNew }[p.view]
@@ -59,16 +62,18 @@ export default function Sidebar(p: Props) {
         <button className="tb" aria-label={newLabel} title={`${newLabel} (${kbd('N')})`} onClick={onNew}><Compose size={18} /></button>
       </div>
 
-      <div className="seg mode" role="tablist" aria-label="Mod">
-        {MODES.map((m) => <button key={m.id} role="tab" aria-selected={p.mode === m.id} onClick={() => p.onMode(m.id)}>{m.label}</button>)}
-      </div>
+      {p.modules.coach && (
+        <div className="seg mode" role="tablist" aria-label="Mod">
+          {MODES.map((m) => <button key={m.id} role="tab" aria-selected={p.mode === m.id} onClick={() => p.onMode(m.id)}>{m.label}</button>)}
+        </div>
+      )}
       {sections.length > 1 && (
-        <div className="seg" role="tablist" aria-label="Bölümler">
+        <div className={'seg' + (sections.length > 4 ? ' many' : '')} role="tablist" aria-label="Bölümler">
           {sections.map((s) => <button key={s.id} role="tab" aria-selected={p.view === s.id} onClick={() => p.onView(s.id)}>{sections.length > 3 ? s.tab : s.label}</button>)}
         </div>
       )}
 
-      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' || p.view === 'today' ? <CalendarList {...p} /> : p.view === 'trackers' ? <TrackerList {...p} /> : <ProjectList {...p} />}
+      {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : p.view === 'calendar' || (p.view === 'today' && p.modules.calendar) ? <CalendarList {...p} /> : p.view === 'today' ? <ChatList {...p} /> : p.view === 'trackers' ? <TrackerList {...p} /> : <ProjectList {...p} />}
 
       <div className="side-foot">
         <button className="row" onClick={p.onSettings}><Gear size={17} /><span className="t">Ayarlar</span><span className="kbd">{kbd(',')}</span></button>

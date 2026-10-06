@@ -62,3 +62,14 @@ Ağır kısım Electron'un kendi ikili dosyası (~100 MB). Takılırsa şunu den
     ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install
 
 `npm run dist` (kurulum paketi) ilk çalıştırmada electron-builder'ı ayrıca indirir; sadece geliştiriyorsanız gerekmez.
+
+## Modlar: Akademik Koç ve Yaşam Koçu
+Uygulama iki moda ayrılır; ikisi aynı veritabanını ve aynı hafızayı kullanır (plan: `docs/yasam-kocu-plan.md`).
+- **Akademik Koç:** sohbet, notlar, projeler, dosya arşivi, quiz. **Yaşam Koçu:** Bugün ekranı, takvim, alışkanlık takibi, yaşam projeleri. Mod adları `src/modes.ts` içindedir.
+- `electron/coach.cjs` – koç modunun sabit güvenlik talimatları (ayarlardan değiştirilemez).
+- `electron/memory-tools.cjs` – hafıza alanları (akademik / yaşam / genel), "sadece bu modda" süzgeci ve `search_memory` aracı.
+- `electron/calendar.cjs` – `events` tablosu, tekrarlayan etkinlikler (`rrule`), `list_events` / `create_event` / `update_event` / `delete_event`.
+- `electron/trackers.cjs` – `trackers` ve `tracker_entries`, `list_trackers` / `get_tracker_summary` / `log_entry` / `create_tracker`.
+- `electron/today.cjs` – Bugün ekranının günlük özeti (günde bir kez üretilir, `meta` tablosunda saklanır).
+- Modelin yaptığı her yazma (not, etkinlik, takip) aynı öneri → onay kartı → geri al hattından geçer; yalnızca `log_entry` onaysız kaydeder ve sohbetten geri alınır.
+- Ayarlar → Modüller: Yaşam Koçu modu tümüyle, takvim ve takip ayrı ayrı kapatılabilir; kapalı modülün araçları modele gönderilmez. Veriler yalnızca bu bilgisayarda durur; dışarı çıkan tek şey seçili model sağlayıcısına giden isteklerdir.

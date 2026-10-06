@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ArchiveSettings, ArchiveStatus, CoachSettings, MemoryDomain, MemoryStore, Provider, Settings } from '../types'
-import { CHAT_NAME, COACH_NAME } from '../modes'
-import { Archive, Check, Close, Folder, Key, Plus, Star, Trash } from './Icons'
+import { CHAT_NAME, COACH_NAME, modulesOf } from '../modes'
+import { Archive, Check, Checklist, Close, Folder, Key, Plus, Star, Trash } from './Icons'
 
 // Hafıza alanları: akademik kayıtlar Sohbet modunda, yaşam kayıtları koç modunda, genel kayıtlar ikisinde de kullanılır.
 const DOMAINS: { id: MemoryDomain; label: string }[] = [{ id: 'akademik', label: 'Akademik' }, { id: 'yasam', label: 'Yaşam' }, { id: 'genel', label: 'Genel' }]
@@ -14,11 +14,13 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
   const [sel, setSel] = useState(settings.activeProvider)
   const [models, setModels] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<'api' | 'memory' | 'archive'>('api')
+  const [tab, setTab] = useState<'api' | 'memory' | 'archive' | 'modules'>('api')
   const [status, setStatus] = useState<ArchiveStatus | null>(null)
   const arc: ArchiveSettings = { ocr: s.archive?.ocr ?? 'local', semantic: !!s.archive?.semantic }
   const coach: CoachSettings = s.modes?.coach ?? { systemPrompt: '' }
   const setCoach = (d: Partial<CoachSettings>) => setS({ ...s, modes: { ...s.modes, coach: { ...coach, ...d } } })
+  const mods = modulesOf(s), coachOn = mods.coach
+  const setMod = (d: Settings['modules']) => setS({ ...s, modules: { ...s.modules, ...d } })
   const setArc = (d: Partial<ArchiveSettings>) => setS({ ...s, archive: { ...arc, ...d } })
   // Arşiv sekmesi açıkken indeksleme durumu canlı izlenir.
   useEffect(() => {
@@ -67,6 +69,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
           <button className={'row' + (tab === 'api' ? ' active' : '')} aria-current={tab === 'api' ? 'page' : undefined} onClick={() => setTab('api')}><Key size={16} /><span className="t">API ve model</span></button>
           <button className={'row' + (tab === 'memory' ? ' active' : '')} aria-current={tab === 'memory' ? 'page' : undefined} onClick={() => setTab('memory')}><Archive size={16} /><span className="t">Hafıza ve talimatlar</span></button>
           <button className={'row' + (tab === 'archive' ? ' active' : '')} aria-current={tab === 'archive' ? 'page' : undefined} onClick={() => setTab('archive')}><Folder size={16} /><span className="t">Arşiv ve arama</span></button>
+          <button className={'row' + (tab === 'modules' ? ' active' : '')} aria-current={tab === 'modules' ? 'page' : undefined} onClick={() => setTab('modules')}><Checklist size={16} /><span className="t">Modüller</span></button>
         </nav>
 
         <div className="set-main">
@@ -132,6 +135,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
               </div>
               <p className="note gcap">Kaydettiğiniz modeller sohbetteki model menüsünde en üstte listelenir.</p>
 
+              {coachOn && <>
               <div className="stack">
                 <span className="label gl">{COACH_NAME.toLocaleUpperCase('tr-TR')} MODELİ</span>
                 <div className="group">
@@ -145,6 +149,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                 </div>
               </div>
               <p className="note gcap">{COACH_NAME} modu burada seçilen modeli kullanır; model kısıtı yoktur, ancak güçlü bir model önerilir. Mod açıkken üstteki model menüsünden yapılan seçim de buraya kaydedilir.</p>
+              </>}
 
               <div className="group">
                 <div className="frow">
@@ -163,10 +168,12 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                 <textarea className="tarea" value={s.systemPrompt} onChange={(e) => setS({ ...s, systemPrompt: e.target.value })} placeholder="Örn. Her zaman Türkçe ve kısa cevap ver." />
               </label>
 
+              {coachOn && <>
               <label className="stack"><span className="label gl">{COACH_NAME.toLocaleUpperCase('tr-TR')} TALİMATLARI</span>
                 <textarea className="tarea" value={coach.systemPrompt} onChange={(e) => setCoach({ systemPrompt: e.target.value })} placeholder="Örn. Sabahları erken kalkıyorum; önerileri buna göre yap." />
               </label>
               <p className="note gcap">Kişisel talimatlar yalnızca {CHAT_NAME} modunda, bu talimatlar yalnızca {COACH_NAME} modunda kullanılır. Koç modunun güvenlik kuralları bu alandan değiştirilemez.</p>
+              </>}
 
               <div className="group">
                 <div className="frow">
@@ -177,10 +184,10 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
 
               <div className="stack">
                 <span className="label gl">HAFIZA · {shown.length} MADDE</span>
-                <div className="seg" role="group" aria-label="Alana göre süz">
+                {coachOn && <div className="seg" role="group" aria-label="Alana göre süz">
                   <button aria-pressed={memFilter === 'all'} onClick={() => setMemFilter('all')}>Tümü</button>
                   {DOMAINS.map((d) => <button key={d.id} aria-pressed={memFilter === d.id} onClick={() => setMemFilter(d.id)}>{d.label}</button>)}
-                </div>
+                </div>}
                 <div className="group">
                   {shown.map((i) => {
                     const dom = i.domain ?? 'genel'
@@ -189,7 +196,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                         <textarea rows={1} defaultValue={i.text} aria-label="Hafıza maddesi"
                           onBlur={async (e) => { const v = e.target.value.trim(); if (v && v !== i.text) setMem(await window.api.updateMemory(i.id, { text: v })); else e.target.value = i.text }} />
                         <button className="ib" aria-label="Maddeyi sil" onClick={async () => setMem(await window.api.deleteMemory(i.id))}><Trash size={15} /></button>
-                        <div className="mem-meta">
+                        {coachOn && <div className="mem-meta">
                           <select className="mem-dom" aria-label="Alan" value={dom} onChange={async (e) => setMem(await window.api.updateMemory(i.id, { domain: e.target.value as MemoryDomain }))}>
                             {DOMAINS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                           </select>
@@ -197,7 +204,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                             <button className={'mem-only' + (i.modeOnly ? ' on' : '')} aria-pressed={!!i.modeOnly} title={`Açıkken bu kayıt yalnızca ${dom === 'yasam' ? COACH_NAME : CHAT_NAME} modunda kullanılır; diğer mod bu kaydı hiçbir koşulda göremez`}
                               onClick={async () => setMem(await window.api.updateMemory(i.id, { modeOnly: !i.modeOnly }))}>{i.modeOnly && <Check size={12} />}Sadece bu modda kalsın</button>
                           )}
-                        </div>
+                        </div>}
                       </div>
                     )
                   })}
@@ -208,9 +215,27 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
                   </form>
                 </div>
               </div>
-              <p className="note gcap">Akademik kayıtlar {CHAT_NAME} modunda, yaşam kayıtları {COACH_NAME} modunda, genel kayıtlar ikisinde de kullanılır. Bir mod diğerinin kayıtlarına yalnızca gerektiğinde bakar; "Sadece bu modda kalsın" açık olan kayıtlara hiç bakamaz. Sağlık, beslenme, uyku ve ruh hâliyle ilgili otomatik kayıtlar bu seçenek açık olarak eklenir.</p>
+              {coachOn && <p className="note gcap">Akademik kayıtlar {CHAT_NAME} modunda, yaşam kayıtları {COACH_NAME} modunda, genel kayıtlar ikisinde de kullanılır. Bir mod diğerinin kayıtlarına yalnızca gerektiğinde bakar; "Sadece bu modda kalsın" açık olan kayıtlara hiç bakamaz. Sağlık, beslenme, uyku ve ruh hâliyle ilgili otomatik kayıtlar bu seçenek açık olarak eklenir.</p>}
               <p className="note gcap">Otomatik kayıt için her cevaptan sonra seçili modele kısa bir ek istek gönderilir. Parola gibi hassas bilgileri kaydetmemesi için modele talimat verilir; yine de listeyi kontrol edin.</p>
               {mem.items.length > 0 && <button className="pill sm plain danger" style={{ alignSelf: 'flex-start' }} onClick={async () => { if (confirm('Tüm hafıza silinsin mi?')) setMem(await window.api.clearMemory()) }}>Tüm hafızayı sil</button>}
+            </>}
+            {tab === 'modules' && <>
+              <h2>Modüller</h2>
+              <div className="group">
+                <div className="frow">
+                  <div className="fl col" id="mod-coach"><span>{COACH_NAME} modu</span><span className="note">Bugün ekranı, takvim, takip ve yaşam projeleri</span></div>
+                  <button className="sw" role="switch" aria-checked={mods.coach} aria-labelledby="mod-coach" onClick={() => setMod({ coach: !mods.coach })}><i /></button>
+                </div>
+                {coachOn && <div className="frow">
+                  <div className="fl col" id="mod-cal"><span>Takvim</span><span className="note">Haftalık görünüm, ders programı ve modelin etkinlik araçları</span></div>
+                  <button className="sw" role="switch" aria-checked={mods.calendar} aria-labelledby="mod-cal" onClick={() => setMod({ calendar: !mods.calendar })}><i /></button>
+                </div>}
+                {coachOn && <div className="frow">
+                  <div className="fl col" id="mod-trk"><span>Takip</span><span className="note">Alışkanlık takipleri ve modelin kayıt araçları</span></div>
+                  <button className="sw" role="switch" aria-checked={mods.trackers} aria-labelledby="mod-trk" onClick={() => setMod({ trackers: !mods.trackers })}><i /></button>
+                </div>}
+              </div>
+              <p className="note gcap">Kapalı bir modülün araçları modele gönderilmez ve arayüzde hiçbir yerde görünmez. Verileriniz silinmez; modülü yeniden açtığınızda kaldığı yerden devam eder. {COACH_NAME} modu kapalıyken uygulama yalnızca akademik taraftan oluşur. Değişiklik "Kaydet" ile uygulanır.</p>
             </>}
             {tab === 'archive' && <>
               <h2>Arşiv ve arama</h2>
@@ -255,6 +280,7 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
           <div className="set-foot">
             <p className="note">{tab === 'api'
               ? 'Anahtarlar işletim sisteminin güvenli depolamasıyla şifrelenerek yalnızca bu bilgisayarda saklanır ve sadece seçtiğiniz API adresine gönderilir.'
+              : tab === 'modules' ? 'Modül ayarları yalnızca bu bilgisayardaki görünümü ve modele verilen araçları değiştirir; hiçbir veri silinmez.'
               : tab === 'archive' ? 'OCR ve anlamsal arama arka planda çalışır; uygulamayı kullanmaya devam edebilirsiniz.'
               : 'Hafıza maddeleri anında kaydedilir ve silinir; Kaydet yalnızca talimatlar ve sağlayıcı ayarları içindir.'}</p>
             <div className="row-btns">
