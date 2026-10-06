@@ -342,7 +342,12 @@ export default function App() {
   async function undoTrackerOp(chatId: string, msgId: string, op: NoteOp) {
     try {
       if (op.target === 'entry') await window.api.deleteTrackerEntry(op.entryId!)
-      else { if (!confirm(`"${op.title}" takibi ve varsa kayıtları silinsin mi?`)) return; await window.api.deleteTracker(op.trackerId!) }
+      else {
+        if (!confirm(`"${op.title}" takibi ve varsa kayıtları silinsin mi?`)) return
+        await window.api.deleteTracker(op.trackerId!)
+        // Takiple birlikte kayıtları da silindi: bu sohbette o takibe eklenmiş kayıt etiketleri de geri alınmış görünür.
+        patchChat(chatId, (c) => ({ ...c, msgs: c.msgs.map((m) => ({ ...m, noteOps: m.noteOps?.map((o) => (o.target === 'entry' && o.trackerId === op.trackerId && o.status === 'saved' ? { ...o, status: 'undone' as const } : o)) })) }))
+      }
       patchOp(chatId, msgId, op.id, { status: 'undone' }); bumpTrk()
     } catch { alert('İşlem geri alınamadı.') }
   }
