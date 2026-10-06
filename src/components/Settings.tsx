@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { ArchiveSettings, ArchiveStatus, CoachSettings, MemoryStore, Provider, Settings } from '../types'
+import type { ArchiveSettings, ArchiveStatus, CoachSettings, MemoryDomain, MemoryStore, Provider, Settings } from '../types'
 import { COACH_NAME } from '../modes'
 import { Archive, Check, Close, Folder, Key, Plus, Star, Trash } from './Icons'
 
+// Hafıza alanları: akademik kayıtlar Sohbet modunda, yaşam kayıtları koç modunda, genel kayıtlar ikisinde de kullanılır.
+const DOMAINS: { id: MemoryDomain; label: string }[] = [{ id: 'akademik', label: 'Akademik' }, { id: 'yasam', label: 'Yaşam' }, { id: 'genel', label: 'Genel' }]
 const OCR_MODES: { id: ArchiveSettings['ocr']; label: string }[] = [{ id: 'off', label: 'Kapalı' }, { id: 'local', label: 'Bu bilgisayarda' }, { id: 'model', label: 'Model ile' }]
 
 interface Props { settings: Settings; onSave(s: Settings): Promise<void>; onClose(): void }
@@ -29,6 +31,8 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
   }, [tab])
   const [mem, setMem] = useState<MemoryStore>({ enabled: true, items: [] })
   const [newMem, setNewMem] = useState('')
+  const [memFilter, setMemFilter] = useState<'all' | MemoryDomain>('all')
+  const shown = mem.items.filter((i) => memFilter === 'all' || (i.domain ?? 'genel') === memFilter)
   useEffect(() => { window.api.loadMemory().then(setMem) }, [])
   const p = s.providers.find((x) => x.id === sel)!
   const custom = sel.startsWith('custom-')
@@ -172,22 +176,39 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
               </div>
 
               <div className="stack">
-                <span className="label gl">HAFIZA · {mem.items.length} MADDE</span>
+                <span className="label gl">HAFIZA · {shown.length} MADDE</span>
+                <div className="seg" role="group" aria-label="Alana göre süz">
+                  <button aria-pressed={memFilter === 'all'} onClick={() => setMemFilter('all')}>Tümü</button>
+                  {DOMAINS.map((d) => <button key={d.id} aria-pressed={memFilter === d.id} onClick={() => setMemFilter(d.id)}>{d.label}</button>)}
+                </div>
                 <div className="group">
-                  {mem.items.map((i) => (
-                    <div className="frow mem-item" key={i.id}>
-                      <textarea rows={1} defaultValue={i.text} aria-label="Hafıza maddesi"
-                        onBlur={async (e) => { const v = e.target.value.trim(); if (v && v !== i.text) setMem(await window.api.updateMemory(i.id, v)); else e.target.value = i.text }} />
-                      <button className="ib" aria-label="Maddeyi sil" onClick={async () => setMem(await window.api.deleteMemory(i.id))}><Trash size={15} /></button>
-                    </div>
-                  ))}
-                  <form className="frow mem-add" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; setMem(await window.api.addMemory(newMem)); setNewMem('') }}>
+                  {shown.map((i) => {
+                    const dom = i.domain ?? 'genel'
+                    return (
+                      <div className="frow mem-item" key={i.id}>
+                        <textarea rows={1} defaultValue={i.text} aria-label="Hafıza maddesi"
+                          onBlur={async (e) => { const v = e.target.value.trim(); if (v && v !== i.text) setMem(await window.api.updateMemory(i.id, { text: v })); else e.target.value = i.text }} />
+                        <button className="ib" aria-label="Maddeyi sil" onClick={async () => setMem(await window.api.deleteMemory(i.id))}><Trash size={15} /></button>
+                        <div className="mem-meta">
+                          <select className="mem-dom" aria-label="Alan" value={dom} onChange={async (e) => setMem(await window.api.updateMemory(i.id, { domain: e.target.value as MemoryDomain }))}>
+                            {DOMAINS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                          </select>
+                          {dom !== 'genel' && (
+                            <button className={'mem-only' + (i.modeOnly ? ' on' : '')} aria-pressed={!!i.modeOnly} title={`Açıkken bu kayıt yalnızca ${dom === 'yasam' ? COACH_NAME : 'Sohbet'} modunda kullanılır; diğer mod bu kaydı hiçbir koşulda göremez`}
+                              onClick={async () => setMem(await window.api.updateMemory(i.id, { modeOnly: !i.modeOnly }))}>{i.modeOnly && <Check size={12} />}Sadece bu modda kalsın</button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <form className="frow mem-add" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; setMem(await window.api.addMemory(newMem, memFilter === 'all' ? 'genel' : memFilter)); setNewMem('') }}>
                     <Plus size={16} />
                     <input value={newMem} onChange={(e) => setNewMem(e.target.value)} aria-label="Hafızaya elle ekle" placeholder="Elle ekle: Örn. Kullanıcı İzmir'de yaşıyor." />
                     <button className="pill sm" type="submit" disabled={!newMem.trim()}>Ekle</button>
                   </form>
                 </div>
               </div>
+              <p className="note gcap">Akademik kayıtlar Sohbet modunda, yaşam kayıtları {COACH_NAME} modunda, genel kayıtlar ikisinde de kullanılır. Bir mod diğerinin kayıtlarına yalnızca gerektiğinde bakar; "Sadece bu modda kalsın" açık olan kayıtlara hiç bakamaz. Sağlık, beslenme, uyku ve ruh hâliyle ilgili otomatik kayıtlar bu seçenek açık olarak eklenir.</p>
               <p className="note gcap">Otomatik kayıt için her cevaptan sonra seçili modele kısa bir ek istek gönderilir. Parola gibi hassas bilgileri kaydetmemesi için modele talimat verilir; yine de listeyi kontrol edin.</p>
               {mem.items.length > 0 && <button className="pill sm plain danger" style={{ alignSelf: 'flex-start' }} onClick={async () => { if (confirm('Tüm hafıza silinsin mi?')) setMem(await window.api.clearMemory()) }}>Tüm hafızayı sil</button>}
             </>}

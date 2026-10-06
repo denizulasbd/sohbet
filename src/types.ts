@@ -43,7 +43,7 @@ export interface SourceRef { n: number; sourceType: 'file' | 'note'; sourceId: s
  *  quotes: sağlayıcı konum bildirdiyse kaynağın dayandığı metin parçaları. Numaralar sohbet boyunca sabittir. */
 export interface WebRef { n: number; url: string; title: string; content: string; quotes?: string[] }
 /** Modelin proje içinde yaptığı bir arama, okuma, kaynak listeleme ya da belge özetleme; 'web': web araması (count: arama sayısı). count yoksa işlem sürüyor. */
-export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize'; text: string; count?: number }
+export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summarize' | 'memory'; text: string; count?: number }
 /** projectId: mesajda @ ile seçilen proje (metne gömülmez); projectName gösterim için o anki adıdır. */
 /** web: bu cevapta gelen web kaynaklarının numaraları; webSearches/webCost: yapılan arama sayısı ve dolar karşılığı. */
 /** tokens/inTokens: cevabın çıkış ve giriş token sayısı (araç turları ve alt çağrılar dahil); cost: sağlayıcının bildirdiği dolar karşılığı (yalnızca OpenRouter). */
@@ -83,7 +83,10 @@ export interface Provider {
   id: string; kind: 'anthropic' | 'openai'; name: string; baseUrl: string
   apiKey: string; hasKey?: boolean; model: string; savedModels?: string[]
 }
-export interface MemoryItem { id: string; text: string; createdAt: number }
+/** Hafıza alanı: 'akademik' sohbet modunun, 'yasam' koç modunun, 'genel' iki modun kaydıdır. */
+export type MemoryDomain = 'akademik' | 'yasam' | 'genel'
+/** domain yoksa 'genel'. modeOnly: kayıt yalnızca kendi alanının modunda kullanılır, diğer moda hiçbir yoldan geçmez. */
+export interface MemoryItem { id: string; text: string; domain?: MemoryDomain; modeOnly?: boolean; createdAt: number }
 export interface MemoryStore { enabled: boolean; items: MemoryItem[] }
 /** Koç modunun kendi talimatı ve modeli. providerId/model yoksa sohbet modunun sağlayıcısı ve modeli kullanılır. */
 export interface CoachSettings { systemPrompt: string; providerId?: string; model?: string }
@@ -109,11 +112,11 @@ declare global {
       listModels(id: string): Promise<string[]>
       loadMemory(): Promise<MemoryStore>
       setMemoryEnabled(v: boolean): Promise<MemoryStore>
-      addMemory(t: string): Promise<MemoryStore>
-      updateMemory(id: string, t: string): Promise<MemoryStore>
+      addMemory(t: string, domain?: MemoryDomain): Promise<MemoryStore>
+      updateMemory(id: string, patch: { text?: string; domain?: MemoryDomain; modeOnly?: boolean }): Promise<MemoryStore>
       deleteMemory(id: string): Promise<MemoryStore>
       clearMemory(): Promise<MemoryStore>
-      extractMemory(req: { providerId: string; model?: string; userText: string; assistantText: string }): Promise<{ added: string[]; error?: string }>
+      extractMemory(req: { mode?: Mode; providerId: string; model?: string; userText: string; assistantText: string }): Promise<{ added: string[]; error?: string }>
       listProjects(): Promise<Project[]>
       createProject(init: { name?: string; kind: ProjectKind }): Promise<Project>
       updateProject(id: string, patch: { name?: string; kind?: ProjectKind }): Promise<Project | null>

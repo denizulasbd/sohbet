@@ -5,6 +5,7 @@ const path = require('path')
 const { streamChat, streamWithTools, listModels, supportsTools, isOpenRouter } = require('./providers.cjs')
 const webSearch = require('./web-search.config.cjs')
 const { COACH_RULES } = require('./coach.cjs')
+const memoryTools = require('./memory-tools.cjs')
 
 const dataDir = () => app.getPath('userData')
 const chatsFile = () => path.join(dataDir(), 'chats.json')
@@ -98,8 +99,10 @@ function buildSystem(s, mode) {
   if (mode === 'coach') parts.push(COACH_RULES)
   if (own && own.trim()) parts.push('Kullanıcının kalıcı talimatları (her zaman uy):\n' + own.trim())
   if (mem.enabled) parts.push('Not: Bu uygulamada kişisel hafızaya kayıt otomatik ve arka planda yapılır. Kullanıcı bir şeyi hatırlamanı isterse "kaydettim" veya "not ettim" gibi bir söz verme; normal şekilde cevap ver.')
-  if (mem.enabled && mem.items.length) {
-    parts.push('Kullanıcı hakkında hatırladıkların (kişisel hafıza). Yalnızca ilgili olduğunda ve doğal biçimde kullan; hafızadan bahsetme, gereksiz yere tekrar etme. Kaydetme işlemini uygulama arka planda kendisi yapar; sen asla "kaydettim/not ettim" deme:\n' + mem.items.map((i) => '- ' + i.text).join('\n'))
+  // Yalnızca modun kendi alanı ve 'genel' kayıtlar eklenir; diğer alan search_memory ile aranır (bkz. memory-tools.cjs).
+  const items = memoryTools.inPrompt(mem.items, mode)
+  if (mem.enabled && items.length) {
+    parts.push('Kullanıcı hakkında hatırladıkların (kişisel hafıza). Yalnızca ilgili olduğunda ve doğal biçimde kullan; hafızadan bahsetme, gereksiz yere tekrar etme. Kaydetme işlemini uygulama arka planda kendisi yapar; sen asla "kaydettim/not ettim" deme:\n' + items.map((i) => '- ' + i.text).join('\n'))
   }
   return parts.join('\n\n')
 }
@@ -118,7 +121,11 @@ Kurallar:
 - Mevcut maddelerde zaten olan veya aynı anlama gelen bilgiyi tekrar etme.
 - Her madde kısa, tek cümle, üçüncü şahıs olmadan ("Kullanıcı ..." ile başlayarak) ve kullanıcının dilinde olsun.
 - Kaydedilecek bir şey yoksa boş dizi döndür.
-YALNIZCA JSON string dizisi döndür, başka hiçbir şey yazma. Örn: ["Kullanıcı İstanbul'da yaşıyor."] veya []`
+Her madde için bir alan (domain) seç:
+- "akademik": dersler, sınavlar, ödevler, okul, akademik projeler, çalışma konuları.
+- "yasam": sağlık, beslenme, kilo, uyku, ruh hâli, spor ve antrenman, günlük rutin ve alışkanlıklar.
+- "genel": ad, yaş, şehir, meslek, genel tercihler ve kalıcı talimatlar gibi her iki tarafta da geçerli bilgiler.
+YALNIZCA şu biçimde bir JSON dizisi döndür, başka hiçbir şey yazma. Örn: [{"text": "Kullanıcı İstanbul'da yaşıyor.", "domain": "genel"}] veya []`
 
 // OCR'ın "model" seçeneği: sayfa görseli sohbette seçili sağlayıcının modeline gönderilir, model yalnızca sayfadaki metni döndürür.
 const OCR_PROMPT = 'Bu, taranmış bir belge sayfasının görüntüsü. Sayfadaki metni olduğu gibi, okuma sırasıyla yaz. Yorum, özet ya da açıklama ekleme; yalnızca sayfadaki metni döndür. Sayfada metin yoksa hiçbir şey yazma.'
@@ -256,14 +263,19 @@ app.whenReady().then(() => {
       // Cevap sırasında yapılan alt model çağrıları (belge özetleme) da cevabın token ve maliyetine eklenir.
       const sub = { inputTokens: 0, outputTokens: 0, cost: null }
       const onUsage = (u) => { sub.inputTokens += u?.inputTokens || 0; sub.outputTokens += u?.outputTokens || 0; if (u?.cost != null) sub.cost = (sub.cost || 0) + u.cost }
-      const notes = !coach && !noTools.has(toolKey) && (await supportsTools(provider))
+      const canTool = !noTools.has(toolKey) && (await supportsTools(provider))
+      const memStore = loadMemory()
+      const memTool = canTool && memStore.enabled ? memoryTools.create({ items: memoryTools.searchable(memStore.items, mode), mode, emit }) : null
+      const noteTools = !coach && canTool
         ? require('./note-tools.cjs').create({ onUsage, session, sources, readNotes, provider, signal: ctrl.signal, emit, propose, projects: archive ? archive.projectNames() : [], autoCreate: !!s.notes?.autoCreate })
         : null
+      // Modele verilen uygulama araçları: not yazma (sohbet modu) + diğer modun hafızasında arama.
+      const notes = memoryTools.combine(noteTools, memTool)
       const go = (withWeb, withNotes) => {
         const system = [buildSystem(s, mode), withWeb ? WEB_RULES : '', withWeb && session ? WEB_PROJECT_RULES : ''].filter(Boolean).join('\n\n')
         const b = withWeb ? { ...base, onAnnotations } : base
         if (session) return knowledge.streamWithKnowledge({ session, base: { ...b, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) }, system, userText, emit, notes: withNotes ? notes : null })
-        // Proje seçili değilken: yalnızca create_note; araç döngüsü kısa tutulur.
+        // Proje seçili değilken: yalnızca create_note ve search_memory; araç döngüsü kısa tutulur.
         return withNotes
           ? streamWithTools({ ...b, system: system + '\n\n' + notes.rules, tools: notes.tools, maxRounds: 3, runTool: (call) => { started = true; return notes.run(call) }, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) })
           : streamChat({ ...b, system, ...(withWeb ? { serverTools: webSearch.toolsFor(0) } : {}) })
@@ -296,27 +308,36 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('memory:load', () => loadMemory())
   ipcMain.handle('memory:setEnabled', (_e, enabled) => { const m = loadMemory(); m.enabled = !!enabled; saveMemory(m); return m })
-  ipcMain.handle('memory:add', (_e, text) => {
+  ipcMain.handle('memory:add', (_e, text, domain) => {
     const m = loadMemory(); const t = norm(text)
-    if (t && !m.items.some((i) => i.text.toLowerCase() === t.toLowerCase())) m.items.unshift({ id: memId(), text: t, createdAt: Date.now() })
+    if (t && !m.items.some((i) => i.text.toLowerCase() === t.toLowerCase())) m.items.unshift({ id: memId(), text: t, domain: memoryTools.DOMAINS.includes(domain) ? domain : 'genel', modeOnly: false, createdAt: Date.now() })
     m.items = m.items.slice(0, MAX_MEMORIES); saveMemory(m); return m
   })
-  ipcMain.handle('memory:update', (_e, id, text) => {
-    const m = loadMemory(); const t = norm(text)
-    m.items = m.items.map((i) => (i.id === id && t ? { ...i, text: t } : i)); saveMemory(m); return m
+  // patch: { text?, domain?, modeOnly? }. 'genel' kayıt iki modda da kullanıldığı için modeOnly olamaz.
+  ipcMain.handle('memory:update', (_e, id, patch) => {
+    const m = loadMemory(); const t = norm(patch?.text)
+    m.items = m.items.map((i) => {
+      if (i.id !== id) return i
+      const domain = memoryTools.DOMAINS.includes(patch?.domain) ? patch.domain : memoryTools.domainOf(i)
+      const modeOnly = domain !== 'genel' && (typeof patch?.modeOnly === 'boolean' ? patch.modeOnly : !!i.modeOnly)
+      return { ...i, ...(t ? { text: t } : {}), domain, modeOnly }
+    })
+    saveMemory(m); return m
   })
   ipcMain.handle('memory:delete', (_e, id) => { const m = loadMemory(); m.items = m.items.filter((i) => i.id !== id); saveMemory(m); return m })
   ipcMain.handle('memory:clear', () => { const m = loadMemory(); m.items = []; saveMemory(m); return m })
 
   // Her cevaptan sonra: sohbette kalıcı bir şey var mı? Varsa hafızaya ekle, eklenenleri döndür.
-  ipcMain.handle('memory:extract', async (_e, { providerId, model, userText, assistantText }) => {
+  ipcMain.handle('memory:extract', async (_e, { providerId, model, userText, assistantText, mode }) => {
     try {
       if (!loadMemory().enabled) return { added: [] }
       const s = withPlainKeys(loadSettings())
       const p = s.providers.find((x) => x.id === providerId)
       if (!p) return { added: [] }
       const mem = loadMemory()
-      const prompt = `MEVCUT HAFIZA:\n${mem.items.map((i) => '- ' + i.text).join('\n') || '(boş)'}\n\nKULLANICI MESAJI:\n${String(userText).slice(0, 4000)}\n\nASİSTAN CEVABI:\n${String(assistantText).slice(0, 1500)}`
+      // Çıkarım modeline yalnızca bu modun görebildiği kayıtlar gösterilir (diğer modun modeOnly kayıtları buradan da geçmez).
+      const known = [...memoryTools.inPrompt(mem.items, mode), ...memoryTools.searchable(mem.items, mode)]
+      const prompt = `MEVCUT HAFIZA:\n${known.map((i) => '- ' + i.text).join('\n') || '(boş)'}\n\nKULLANICI MESAJI:\n${String(userText).slice(0, 4000)}\n\nASİSTAN CEVABI:\n${String(assistantText).slice(0, 1500)}`
       const raw = await completeText({ ...p, model: model || p.model }, EXTRACT_SYSTEM, prompt, AbortSignal.timeout(30000))
       const m = raw.match(/\[[\s\S]*\]/)
       if (!m) { console.log('[hafıza] JSON bulunamadı:', raw.slice(0, 300)); return { added: [], error: 'Model geçerli bir JSON döndürmedi.' } }
@@ -325,12 +346,12 @@ app.whenReady().then(() => {
       const cur = loadMemory()
       const added = []
       for (const x of arr.slice(0, 5)) {
-        const t = norm(typeof x === 'string' ? x : '')
-        if (t && !cur.items.some((i) => i.text.toLowerCase() === t.toLowerCase()) && !added.includes(t)) added.push(t)
+        const t = norm(typeof x === 'string' ? x : x?.text)
+        if (t && !cur.items.some((i) => i.text.toLowerCase() === t.toLowerCase()) && !added.some((a) => a.text === t)) added.push({ text: t, ...memoryTools.classify(t, x?.domain) })
       }
-      cur.items = [...added.map((text) => ({ id: memId(), text, createdAt: Date.now() })), ...cur.items].slice(0, MAX_MEMORIES)
+      cur.items = [...added.map((a) => ({ id: memId(), ...a, createdAt: Date.now() })), ...cur.items].slice(0, MAX_MEMORIES)
       if (added.length) saveMemory(cur)
-      return { added }
+      return { added: added.map((a) => a.text) }
     } catch (err) { console.log('[hafıza] hata:', err); return { added: [], error: String(err && err.message ? err.message : err) } }
   })
 

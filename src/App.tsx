@@ -28,6 +28,7 @@ function mentionAt(text: string, caret: number): { start: number; q: string } | 
 function stepText(s: ToolStep) {
   if (s.kind === 'web') return s.count == null ? "Web'de aranıyor…" : `Web'de arandı · ${s.count} arama`
   if (s.kind === 'read') return s.count == null ? 'Kaynak okunuyor…' : `Okundu: ${s.text}`
+  if (s.kind === 'memory') return s.count == null ? 'Hafızada aranıyor…' : `Hafızada arandı: ${s.text} · ${s.count ? s.count + ' kayıt' : 'kayıt yok'}`
   if (s.kind === 'list') return s.count == null ? 'Kaynaklar listeleniyor…' : `Kaynaklar listelendi: ${s.text} · ${s.count} kaynak`
   // özetleme sürerken metin ilerlemeyi taşır ("Sayfa 21–30 işleniyor… · dosya")
   if (s.kind === 'summarize') return s.count == null ? (s.text.includes('…') ? s.text : `Belge işleniyor… · ${s.text}`) : `Belge işlendi: ${s.text} · ${s.count} önemli nokta`
@@ -403,7 +404,7 @@ export default function App() {
           }
           setBot((m) => ({ ...m, ms: now - started, tokens: d.usage?.outputTokens || undefined, inTokens: d.usage?.inputTokens || undefined, ...(d.usage?.cost != null ? { cost: d.usage.cost } : {}), steps: done(m.steps), noteOps: closeOps(m.noteOps), ...(searches ? { webSearches: searches, webCost: d.usage?.webCost } : {}), ...(d.usage?.webNote ? { webNote: d.usage.webNote } : {}), think: m.think ? { ...m.think, end: m.think.end ?? now, tokens: d.usage?.reasoningTokens || m.think.tokens, note: d.usage?.reasoningNote } : m.think })); setStreaming(false); abortRef.current = null
           if (!d.aborted && acc && lastUser) {
-            window.api.extractMemory({ providerId: provider.id, model: provider.model, userText: lastUser.text, assistantText: acc })
+            window.api.extractMemory({ mode, providerId: provider.id, model: provider.model, userText: lastUser.text, assistantText: acc })
               .then((r) => { if (r.added.length) setBot((m) => ({ ...m, memo: r.added })); else if (r.error) setBot((m) => ({ ...m, memoErr: r.error })) })
               .catch((e) => setBot((m) => ({ ...m, memoErr: 'Ana süreç yanıt vermedi — uygulamayı tamamen kapatıp npm run dev ile yeniden başlatın. (' + String(e?.message || e).slice(0, 120) + ')' })))
           }
