@@ -1,3 +1,4 @@
+import type { Mode } from './modes'
 export type Role = 'user' | 'assistant'
 export type ReasoningLevel = 'off' | 'low' | 'medium' | 'high'
 export interface ReasoningConfig { level: ReasoningLevel }
@@ -47,7 +48,8 @@ export interface ToolStep { kind: 'search' | 'read' | 'web' | 'list' | 'summariz
 /** web: bu cevapta gelen web kaynaklarının numaraları; webSearches/webCost: yapılan arama sayısı ve dolar karşılığı. */
 /** tokens/inTokens: cevabın çıkış ve giriş token sayısı (araç turları ve alt çağrılar dahil); cost: sağlayıcının bildirdiği dolar karşılığı (yalnızca OpenRouter). */
 export interface Msg { inTokens?: number; cost?: number; noteOps?: NoteOp[]; web?: number[]; webSearches?: number; webCost?: number; webNote?: string; projectId?: string; projectName?: string; steps?: ToolStep[]; notes?: NoteRef[]; id: string; role: Role; text: string; ms?: number; tokens?: number; error?: boolean; memo?: string[]; memoErr?: string; thinking?: string; think?: ThinkInfo }
-export interface Chat { id: string; title: string; updatedAt: number; msgs: Msg[]; sources?: SourceRef[]; webSources?: WebRef[] }
+/** mode yoksa sohbet 'chat' modundadır. */
+export interface Chat { mode?: Mode; id: string; title: string; updatedAt: number; msgs: Msg[]; sources?: SourceRef[]; webSources?: WebRef[] }
 // ---- quiz ----
 export type QuizDifficulty = 'easy' | 'medium' | 'hard'
 export type QuizKind = 'mcq' | 'open' | 'mixed'
@@ -83,7 +85,10 @@ export interface Provider {
 }
 export interface MemoryItem { id: string; text: string; createdAt: number }
 export interface MemoryStore { enabled: boolean; items: MemoryItem[] }
-export interface Settings { activeProvider: string; providers: Provider[]; systemPrompt: string; reasoning?: ReasoningConfig; archive?: ArchiveSettings; webSearch?: { defaultOn: boolean }; notes?: { autoCreate: boolean } }
+/** Koç modunun kendi talimatı ve modeli. providerId/model yoksa sohbet modunun sağlayıcısı ve modeli kullanılır. */
+export interface CoachSettings { systemPrompt: string; providerId?: string; model?: string }
+/** lastMode: son kullanılan mod · coachNoticeSeen: koç moduna ilk girişteki uyarı görüldü. */
+export interface Settings { modes?: { coach?: CoachSettings }; lastMode?: Mode; coachNoticeSeen?: boolean; activeProvider: string; providers: Provider[]; systemPrompt: string; reasoning?: ReasoningConfig; archive?: ArchiveSettings; webSearch?: { defaultOn: boolean }; notes?: { autoCreate: boolean } }
 
 declare global {
   interface Window {
@@ -153,7 +158,7 @@ declare global {
       stream(
         /** projectId verilirse model o projede araçlarla arar; userText son kullanıcı mesajının yalın metni, sources sohbetin mevcut etiketleridir.
          *  web: web araması aracı isteğe eklensin mi; webSources sohbetin mevcut [W#] kaynaklarıdır. */
-        req: { web?: boolean; webSources?: WebRef[]; requestId: string; messages: { role: Role; content: string }[]; providerId: string; model?: string; reasoning?: ReasoningLevel; projectId?: string; userText?: string; sources?: SourceRef[] },
+        req: { mode?: Mode; web?: boolean; webSources?: WebRef[]; requestId: string; messages: { role: Role; content: string }[]; providerId: string; model?: string; reasoning?: ReasoningLevel; projectId?: string; userText?: string; sources?: SourceRef[] },
         h: { onToken(t: string): void; onThinking?(t: string): void; onTool?(e: ToolStep & { phase: 'start' | 'progress' | 'end' }): void; onNote?(op: Omit<NoteOp, 'status'>): void; onSources?(s: SourceRef[]): void; onWeb?(s: WebRef[], ns: number[]): void; onDone(d: { usage?: { inputTokens?: number; cost?: number; webSearches?: number; webCost?: number; webNote?: string; outputTokens: number; reasoningTokens?: number; reasoningNote?: 'ignored' | 'lowest' }; aborted?: boolean }): void; onError(m: string): void }
       ): () => void
     }

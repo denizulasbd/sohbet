@@ -15,6 +15,7 @@ import { contentOf, isEmptyNote, toRef } from './notes'
 import { isMac } from './platform'
 import { detectReasoning, normalizeReasoning } from './reasoning'
 import { fold } from './search'
+import { COACH_NAME, type Mode } from './modes'
 
 /** İmlecin hemen solunda yazılmakta olan "@sorgu" (satır başında ya da boşluktan sonra başlamalı). */
 function mentionAt(text: string, caret: number): { start: number; q: string } | null {
@@ -33,6 +34,8 @@ function stepText(s: ToolStep) {
   return s.count == null ? `Aranıyor: ${s.text}…` : `Arandı: ${s.text} · ${s.count ? s.count + ' sonuç' : 'sonuç yok'}`
 }
 
+/** Bir modun en son güncellenen sohbeti; yoksa null. */
+const latestIn = (cs: Chat[], m: Mode) => [...cs].filter((c) => (c.mode ?? 'chat') === m).sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id ?? null
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 const usd = (n: number) => '$' + n.toFixed(3).replace('.', ',')
 const num = (n: number) => n.toLocaleString('tr-TR')
@@ -61,6 +64,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   // hangi bölüm açık (sohbet/notlar): kenar çubuğundaki liste ve ana alan birlikte değişir
   const [view, setView] = useState<SbPage>('chat')
+  // Sohbet / koç modu: her modun kendi sohbet listesi, talimatı ve modeli vardır; notlar ve projeler sohbet modundadır.
+  const [mode, setMode] = useState<Mode>('chat')
   const [notes, setNotes] = useState<Note[]>([])
   // Notların en güncel hali: modelin not önerisi kaydedilirken (akış sırasında, eski kapanımlardan) okunur ve hemen diske yazılır.
   const notesRef = useRef<Note[]>([])
@@ -85,14 +90,19 @@ export default function App() {
   const stick = useRef(true)
 
   const active = useMemo(() => chats.find((c) => c.id === activeId) ?? null, [chats, activeId])
-  const provider = settings?.providers.find((p) => p.id === settings.activeProvider)
+  // Koç modunda kendi sağlayıcısı/modeli seçilmişse o kullanılır; seçilmemişse sohbet modununki.
+  const coachCfg = mode === 'coach' ? settings?.modes?.coach : undefined
+  const baseProvider = settings?.providers.find((p) => p.id === coachCfg?.providerId) ?? settings?.providers.find((p) => p.id === settings.activeProvider)
+  const provider = baseProvider && coachCfg?.model && baseProvider.id === coachCfg.providerId ? { ...baseProvider, model: coachCfg.model } : baseProvider
+  const modeChats = useMemo(() => chats.filter((c) => (c.mode ?? 'chat') === mode), [chats, mode])
   const rcfg = normalizeReasoning(settings?.reasoning)
   const reasonSave = useRef<ReturnType<typeof setTimeout>>()
 
   // yükle
   useEffect(() => {
     Promise.all([window.api.loadChats(), window.api.loadSettings(), window.api.loadNotes()]).then(([c, s, n]) => {
-      setChats(c); setSettings(s); setNotes(n); setWeb(!!s.webSearch?.defaultOn); setActiveId(c.length ? [...c].sort((a, b) => b.updatedAt - a.updatedAt)[0].id : null); setLoaded(true)
+      const m: Mode = s.lastMode === 'coach' ? 'coach' : 'chat'
+      setChats(c); setSettings(s); setNotes(n); setWeb(!!s.webSearch?.defaultOn); setMode(m); setActiveId(latestIn(c, m)); setLoaded(true)
     })
     reloadProjects()
     // Pencereye bırakılan dosya sayfayı o dosyaya götürmesin (bırakma yalnızca proje sayfasında işlenir).
@@ -125,6 +135,19 @@ export default function App() {
   }, [provider?.id, provider?.model, provider?.baseUrl])
 
   const patchChat = useCallback((id: string, fn: (c: Chat) => Chat) => setChats((cs) => cs.map((c) => (c.id === id ? fn(c) : c))), [])
+
+  function switchMode(m: Mode) {
+    if (m === mode || streaming || !settings) return
+    setMode(m); setView('chat'); pruneEmpty(null); setMenu(false)
+    setActiveId(latestIn(chats, m)); setDraft(''); setRefId(null); setMention(null); setAttached([])
+    const next = { ...settings, lastMode: m }
+    setSettings(next); window.api.saveSettings(next)
+  }
+  function ackCoachNotice() {
+    if (!settings) return
+    const next = { ...settings, coachNoticeSeen: true }
+    setSettings(next); window.api.saveSettings(next)
+  }
 
   function newChat() {
     if (streaming) return
@@ -301,7 +324,7 @@ export default function App() {
     return projects.filter((x) => fold(x.name).includes(q)).sort((a, b) => Number(fold(b.name).startsWith(q)) - Number(fold(a.name).startsWith(q))).slice(0, 8)
   }, [mention, projects])
   const mentionOpen = !!mention && (matches.length > 0 || (projects.length === 0 && !mention.q))
-  function syncMention(text: string, caret: number) { setMention(mentionAt(text, caret)); setMIdx(0) }
+  function syncMention(text: string, caret: number) { setMention(mode === 'coach' ? null : mentionAt(text, caret)); setMIdx(0) }
   function chooseProject(pr: Project) {
     if (!mention) return
     const caret = taRef.current?.selectionStart ?? draft.length
@@ -321,7 +344,7 @@ export default function App() {
   function run(chatId: string, history: Msg[]) {
     if (!settings || !provider) return
     const lastUser = [...history].reverse().find((m) => m.role === 'user')
-    const projectId = lastUser?.projectId && projects.some((x) => x.id === lastUser.projectId) ? lastUser.projectId : undefined
+    const projectId = mode !== 'coach' && lastUser?.projectId && projects.some((x) => x.id === lastUser.projectId) ? lastUser.projectId : undefined
     const botId = uid()
     const started = Date.now()
     let acc = '', thinkAcc = ''
@@ -338,7 +361,7 @@ export default function App() {
     const closeOps = (ops?: NoteOp[]) => ops?.map((o) => (o.status === 'pending' ? { ...o, status: 'cancelled' as const } : o))
     abortRef.current = window.api.stream(
       {
-        requestId: botId, providerId: provider.id, messages: history.filter((m) => !m.error).map((m) => ({ role: m.role, content: contentOf(m) })),
+        requestId: botId, mode, providerId: provider.id, model: provider.model, messages: history.filter((m) => !m.error).map((m) => ({ role: m.role, content: contentOf(m) })),
         reasoning: enabled || known ? rc.level : undefined,
         // sources her zaman gider: proje seçili değilken de not içeriğindeki [K#] etiketleri bağlantıya çevrilebilsin
         sources: chats.find((c) => c.id === chatId)?.sources ?? [],
@@ -394,8 +417,8 @@ export default function App() {
     let text = draft.trim()
     if (!text || streaming || !settings) return
     // Menüden seçilmeden elle yazılmış "@Proje Adı" da proje seçimi sayılır ve metinden çıkarılır.
-    let ref = projectRef
-    if (!ref) {
+    let ref = mode === 'coach' ? null : projectRef
+    if (!ref && mode !== 'coach') {
       const f = fold(text)
       for (const pr of [...projects].sort((a, b) => b.name.length - a.name.length)) {
         const i = f.indexOf('@' + fold(pr.name))
@@ -410,7 +433,7 @@ export default function App() {
     if (!active) {
       id = uid()
       history = [userMsg]
-      const chat: Chat = { id, title: text.replace(/\s+/g, ' ').slice(0, 48), updatedAt: Date.now(), msgs: history }
+      const chat: Chat = { id, ...(mode === 'coach' ? { mode } : {}), title: text.replace(/\s+/g, ' ').slice(0, 48), updatedAt: Date.now(), msgs: history }
       setChats((cs) => [chat, ...cs]); setActiveId(id)
     } else {
       history = [...active.msgs, userMsg]
@@ -440,8 +463,11 @@ export default function App() {
 
   async function pickModel(model: string, providerId?: string) {
     if (!settings) return
-    const pid = providerId ?? settings.activeProvider
-    const next = { ...settings, activeProvider: pid, providers: settings.providers.map((p) => (p.id === pid ? { ...p, model } : p)) }
+    const pid = providerId ?? provider?.id ?? settings.activeProvider
+    // Koç modunda seçim yalnızca koç modunun modelini değiştirir.
+    const next = mode === 'coach'
+      ? { ...settings, modes: { ...settings.modes, coach: { systemPrompt: '', ...settings.modes?.coach, providerId: pid, model } } }
+      : { ...settings, activeProvider: pid, providers: settings.providers.map((p) => (p.id === pid ? { ...p, model } : p)) }
     setSettings(next); setMenu(false)
     await window.api.saveSettings(next)
   }
@@ -513,8 +539,8 @@ export default function App() {
   return (
     <div className={'app' + (isMac ? ' mac' : '')}>
       {sidebar && (
-        <Sidebar view={view} onView={navigate} searchRef={searchRef}
-          chats={chats} activeId={activeId}
+        <Sidebar view={view} onView={navigate} searchRef={searchRef} mode={mode} onMode={switchMode}
+          chats={modeChats} activeId={activeId}
           onPick={pickChat}
           onNew={newChat} onDelete={del}
           notes={notes} activeNoteId={activeNoteId} onPickNote={pickNote} onNewNote={newNote} onDeleteNote={delNote}
@@ -581,8 +607,8 @@ export default function App() {
             {!active && (
               <div className="empty">
                 <ChatIcon size={52} />
-                <h2>Yeni sohbet</h2>
-                <p>Bir mesaj yazarak başlayın.</p>
+                <h2>{mode === 'coach' ? COACH_NAME : 'Yeni sohbet'}</h2>
+                <p>{mode === 'coach' ? 'Programınız, alışkanlıklarınız, beslenme ve antrenman hakkında yazın.' : 'Bir mesaj yazarak başlayın.'}</p>
                 {needsKey && <button className="pill primary" onClick={() => setShowSettings(true)}>API anahtarı ekle</button>}
               </div>
             )}
@@ -660,7 +686,7 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <textarea id="composer" ref={taRef} rows={2} placeholder="Mesajınızı yazın · @ ile proje seçin" value={draft}
+              <textarea id="composer" ref={taRef} rows={2} placeholder={mode === 'coach' ? 'Mesajınızı yazın' : 'Mesajınızı yazın · @ ile proje seçin'} value={draft}
                 onChange={(e) => { setDraft(e.target.value); syncMention(e.target.value, e.target.selectionStart) }}
                 onClick={(e) => syncMention(e.currentTarget.value, e.currentTarget.selectionStart)}
                 onBlur={() => setMention(null)}
@@ -674,7 +700,7 @@ export default function App() {
                 }} />
               <div className="box-bar">
                 <ReasoningControl cfg={rcfg} onChange={setReasoning} />
-                <NotePicker notes={notes} attached={attached} onToggle={toggleAttach} onOpenNotes={() => navigate('notes')} />
+                {mode !== 'coach' && <NotePicker notes={notes} attached={attached} onToggle={toggleAttach} onOpenNotes={() => navigate('notes')} />}
                 {/* devre dışıyken düğme fare olaylarını almaz; açıklama sarmalayıcıdan görünür */}
                 <span className="rz-ctl-wrap" title={webOk.ok ? (web ? 'Web araması açık: model gerektiğinde web\'de arar' : 'Web araması kapalı') : webOk.reason ?? 'Web araması yalnızca OpenRouter modellerinde kullanılabilir'}>
                   <button className={'pill wb-btn' + (web && webOk.ok ? ' on' : '')} aria-pressed={web && webOk.ok} aria-label="Web araması" disabled={!webOk.ok} onClick={() => setWeb((w) => !w)}>
@@ -694,6 +720,23 @@ export default function App() {
         </>}
       </main>
       {viewer && <SourceViewer fileId={viewer.fileId} page={viewer.page} onClose={() => setViewer(null)} />}
+      {mode === 'coach' && !settings.coachNoticeSeen && !showSettings && (
+        <div className="modal-bg pad">
+          <div className="cn-dlg" role="alertdialog" aria-labelledby="cn-h">
+            <span className="label">BAŞLAMADAN ÖNCE</span>
+            <h2 id="cn-h">{COACH_NAME}</h2>
+            <div className="group">
+              <div className="frow"><div className="fl col"><span>18 yaşından küçükseniz kullanmayın</span><span className="note">Bu mod yetişkinler içindir. Beslenme ve antrenman önerileri 18 yaş altı için uygun olmayabilir.</span></div></div>
+              <div className="frow"><div className="fl col"><span>Güçlü bir model kullanmanızı öneririz</span><span className="note">Küçük ve ucuz modeller sağlıkla ilgili güvenlik kurallarına daha az güvenilir uyar. Modeli üstteki menüden ya da Ayarlar'dan bu mod için ayrı seçebilirsiniz.</span></div></div>
+              <div className="frow"><div className="fl col"><span>Tıbbi tavsiye değildir</span><span className="note">Yapay zekâ doktor, diyetisyen ya da terapist değildir. Sağlık sorununuz varsa bir uzmana danışın.</span></div></div>
+            </div>
+            <div className="row-btns">
+              <button className="pill" onClick={() => switchMode('chat')}>Geri dön</button>
+              <button className="pill primary" autoFocus onClick={ackCoachNotice}>Anladım</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showSettings && <SettingsModal settings={settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
     </div>
   )

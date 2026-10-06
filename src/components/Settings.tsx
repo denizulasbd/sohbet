@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ArchiveSettings, ArchiveStatus, MemoryStore, Provider, Settings } from '../types'
+import type { ArchiveSettings, ArchiveStatus, CoachSettings, MemoryStore, Provider, Settings } from '../types'
+import { COACH_NAME } from '../modes'
 import { Archive, Check, Close, Folder, Key, Plus, Star, Trash } from './Icons'
 
 const OCR_MODES: { id: ArchiveSettings['ocr']; label: string }[] = [{ id: 'off', label: 'Kapalı' }, { id: 'local', label: 'Bu bilgisayarda' }, { id: 'model', label: 'Model ile' }]
@@ -14,6 +15,8 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
   const [tab, setTab] = useState<'api' | 'memory' | 'archive'>('api')
   const [status, setStatus] = useState<ArchiveStatus | null>(null)
   const arc: ArchiveSettings = { ocr: s.archive?.ocr ?? 'local', semantic: !!s.archive?.semantic }
+  const coach: CoachSettings = s.modes?.coach ?? { systemPrompt: '' }
+  const setCoach = (d: Partial<CoachSettings>) => setS({ ...s, modes: { ...s.modes, coach: { ...coach, ...d } } })
   const setArc = (d: Partial<ArchiveSettings>) => setS({ ...s, archive: { ...arc, ...d } })
   // Arşiv sekmesi açıkken indeksleme durumu canlı izlenir.
   useEffect(() => {
@@ -125,6 +128,20 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
               </div>
               <p className="note gcap">Kaydettiğiniz modeller sohbetteki model menüsünde en üstte listelenir.</p>
 
+              <div className="stack">
+                <span className="label gl">{COACH_NAME.toLocaleUpperCase('tr-TR')} MODELİ</span>
+                <div className="group">
+                  <label className="frow"><span className="fl">Sağlayıcı</span>
+                    <select className="fin" value={coach.providerId && s.providers.some((x) => x.id === coach.providerId) ? coach.providerId : ''} onChange={(e) => setCoach({ providerId: e.target.value || undefined, model: undefined })}>
+                      <option value="">Sohbet ile aynı</option>
+                      {s.providers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </select>
+                  </label>
+                  {coach.providerId && <label className="frow"><span className="fl">Model</span><input className="fin mono" value={coach.model ?? ''} onChange={(e) => setCoach({ model: e.target.value.trim() || undefined })} placeholder="boşsa sağlayıcının modeli" /></label>}
+                </div>
+              </div>
+              <p className="note gcap">{COACH_NAME} modu burada seçilen modeli kullanır; model kısıtı yoktur, ancak güçlü bir model önerilir. Mod açıkken üstteki model menüsünden yapılan seçim de buraya kaydedilir.</p>
+
               <div className="group">
                 <div className="frow">
                   <div className="fl col" id="web-def"><span>Web araması varsayılan olarak açık</span><span className="note">Yeni sohbetlerde mesaj kutusundaki web düğmesi açık gelir</span></div>
@@ -141,6 +158,11 @@ export default function SettingsModal({ settings, onSave, onClose }: Props) {
               <label className="stack"><span className="label gl">KİŞİSEL TALİMATLAR</span>
                 <textarea className="tarea" value={s.systemPrompt} onChange={(e) => setS({ ...s, systemPrompt: e.target.value })} placeholder="Örn. Her zaman Türkçe ve kısa cevap ver." />
               </label>
+
+              <label className="stack"><span className="label gl">{COACH_NAME.toLocaleUpperCase('tr-TR')} TALİMATLARI</span>
+                <textarea className="tarea" value={coach.systemPrompt} onChange={(e) => setCoach({ systemPrompt: e.target.value })} placeholder="Örn. Sabahları erken kalkıyorum; önerileri buna göre yap." />
+              </label>
+              <p className="note gcap">Kişisel talimatlar yalnızca Sohbet modunda, bu talimatlar yalnızca {COACH_NAME} modunda kullanılır. Koç modunun güvenlik kuralları bu alandan değiştirilemez.</p>
 
               <div className="group">
                 <div className="frow">

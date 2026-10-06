@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Chat, Note, Project, ProjectKind, SbPage } from '../types'
 import { isEmptyNote, noteGroup, noteSnippet, noteTitle, tinyDate } from '../notes'
 import { kbd } from '../platform'
+import { MODES, type Mode } from '../modes'
 import { Back, Chat as ChatIcon, Compose, FileText, Folder, Gear, Panel, Pin, Search, Trash } from './Icons'
 
 const DAY = 86400000
@@ -15,6 +16,7 @@ function group(ts: number) {
 
 interface Props {
   view: SbPage; onView(p: SbPage): void
+  mode: Mode; onMode(m: Mode): void
   chats: Chat[]; activeId: string | null; onPick(id: string): void; onNew(): void; onDelete(id: string): void
   notes: Note[]; activeNoteId: string | null; onPickNote(id: string): void; onNewNote(): void; onDeleteNote(id: string): void
   projects: Project[]; activeProjectId: string | null; onPickProject(id: string): void; onNewProject(): void; onDeleteProject(id: string): void
@@ -32,6 +34,8 @@ const NEW = { chat: 'Yeni sohbet', notes: 'Yeni not', projects: 'Yeni proje' }
 const KIND_GROUPS: { kind: ProjectKind; name: string }[] = [{ kind: 'ders', name: 'DERSLER' }, { kind: 'kisisel', name: 'KİŞİSEL PROJELER' }]
 
 export default function Sidebar(p: Props) {
+  // Notlar ve projeler sohbet modunun bölümleridir; koç modunda yalnızca sohbet listesi vardır.
+  const sections = p.mode === 'coach' ? SECTIONS.filter((s) => s.id === 'chat') : SECTIONS
   const cur = SECTIONS.find((s) => s.id === p.view)!
   const newLabel = NEW[p.view]
   const onNew = { chat: p.onNew, notes: p.onNewNote, projects: p.onNewProject }[p.view]
@@ -45,9 +49,14 @@ export default function Sidebar(p: Props) {
         <button className="tb" aria-label={newLabel} title={`${newLabel} (${kbd('N')})`} onClick={onNew}><Compose size={18} /></button>
       </div>
 
-      <div className="seg" role="tablist" aria-label="Bölümler">
-        {SECTIONS.map((s) => <button key={s.id} role="tab" aria-selected={p.view === s.id} onClick={() => p.onView(s.id)}>{s.label}</button>)}
+      <div className="seg mode" role="tablist" aria-label="Mod">
+        {MODES.map((m) => <button key={m.id} role="tab" aria-selected={p.mode === m.id} onClick={() => p.onMode(m.id)}>{m.label}</button>)}
       </div>
+      {sections.length > 1 && (
+        <div className="seg" role="tablist" aria-label="Bölümler">
+          {sections.map((s) => <button key={s.id} role="tab" aria-selected={p.view === s.id} onClick={() => p.onView(s.id)}>{s.label}</button>)}
+        </div>
+      )}
 
       {p.view === 'chat' ? <ChatList {...p} /> : p.view === 'notes' ? <NoteList {...p} /> : <ProjectList {...p} />}
 
@@ -55,7 +64,7 @@ export default function Sidebar(p: Props) {
         <button className="row" onClick={p.onSettings}><Gear size={17} /><span className="t">Ayarlar</span><span className="kbd">{kbd(',')}</span></button>
       </div>
       <nav className="tabbar" aria-label="Bölümler">
-        {SECTIONS.map((s) => <button key={s.id} aria-current={p.view === s.id ? 'page' : undefined} onClick={() => p.onView(s.id)}><s.Icon size={23} />{s.tab}</button>)}
+        {sections.map((s) => <button key={s.id} aria-current={p.view === s.id ? 'page' : undefined} onClick={() => p.onView(s.id)}><s.Icon size={23} />{s.tab}</button>)}
         <button onClick={p.onSettings}><Gear size={23} />Ayarlar</button>
       </nav>
     </aside>

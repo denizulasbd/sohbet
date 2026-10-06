@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { streamChat, streamWithTools, listModels, supportsTools, isOpenRouter } = require('./providers.cjs')
 const webSearch = require('./web-search.config.cjs')
+const { COACH_RULES } = require('./coach.cjs')
 
 const dataDir = () => app.getPath('userData')
 const chatsFile = () => path.join(dataDir(), 'chats.json')
@@ -88,11 +89,14 @@ function explainError(message, provider) {
   return tr ? `${tr} (${m[2].slice(0, 200) || 'HTTP ' + m[1]})` : String(message)
 }
 
-function buildSystem(s) {
+// mode 'coach': kullanıcının koç moduna özel talimatları ve sabit koç kuralları kullanılır (bkz. coach.cjs).
+function buildSystem(s, mode) {
   const mem = loadMemory()
+  const own = mode === 'coach' ? s.modes?.coach?.systemPrompt : s.systemPrompt
   // Tarih kullanıcının yerel saat dilimine göredir; model güncel bilgi gerekip gerekmediğine buna bakarak karar verir.
   const parts = [`Bugünün tarihi: ${new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} (saat dilimi: ${Intl.DateTimeFormat().resolvedOptions().timeZone}).`]
-  if (s.systemPrompt && s.systemPrompt.trim()) parts.push('Kullanıcının kalıcı talimatları (her zaman uy):\n' + s.systemPrompt.trim())
+  if (mode === 'coach') parts.push(COACH_RULES)
+  if (own && own.trim()) parts.push('Kullanıcının kalıcı talimatları (her zaman uy):\n' + own.trim())
   if (mem.enabled) parts.push('Not: Bu uygulamada kişisel hafızaya kayıt otomatik ve arka planda yapılır. Kullanıcı bir şeyi hatırlamanı isterse "kaydettim" veya "not ettim" gibi bir söz verme; normal şekilde cevap ver.')
   if (mem.enabled && mem.items.length) {
     parts.push('Kullanıcı hakkında hatırladıkların (kişisel hafıza). Yalnızca ilgili olduğunda ve doğal biçimde kullan; hafızadan bahsetme, gereksiz yere tekrar etme. Kaydetme işlemini uygulama arka planda kendisi yapar; sen asla "kaydettim/not ettim" deme:\n' + mem.items.map((i) => '- ' + i.text).join('\n'))
@@ -199,7 +203,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('open:external', (_e, url) => openExternal(url))
 
-  ipcMain.on('chat:stream', async (e, { requestId, messages, providerId, model, reasoning, projectId, userText, sources, web, webSources }) => {
+  ipcMain.on('chat:stream', async (e, { requestId, messages, providerId, model, reasoning, projectId, userText, sources, web, webSources, mode }) => {
     const s = withPlainKeys(loadSettings())
     const p = s.providers.find((x) => x.id === providerId)
     const send = (ch, payload) => { if (!e.sender.isDestroyed()) e.sender.send(ch, { requestId, ...payload }) }
@@ -231,7 +235,9 @@ app.whenReady().then(() => {
         onThinking: mark((t) => send('chat:thinking', { token: t }))
       }
       // @proje seçiliyse model proje içinde araçlarla arar; proje silinmişse ya da arşiv açılamadıysa normal sohbet.
-      const knowledge = projectId && archive ? require('./knowledge.cjs') : null
+      // Koç modunda proje, arşiv ve not araçları gönderilmez; web araması iki modda da kullanılabilir.
+      const coach = mode === 'coach'
+      const knowledge = !coach && projectId && archive ? require('./knowledge.cjs') : null
       const readNotes = () => readJson(notesFile(), [])
       const session = knowledge?.open(projectId, sources, readNotes)
       const emit = (ch, payload) => { started = true; send('chat:' + ch, payload) }
@@ -250,11 +256,11 @@ app.whenReady().then(() => {
       // Cevap sırasında yapılan alt model çağrıları (belge özetleme) da cevabın token ve maliyetine eklenir.
       const sub = { inputTokens: 0, outputTokens: 0, cost: null }
       const onUsage = (u) => { sub.inputTokens += u?.inputTokens || 0; sub.outputTokens += u?.outputTokens || 0; if (u?.cost != null) sub.cost = (sub.cost || 0) + u.cost }
-      const notes = !noTools.has(toolKey) && (await supportsTools(provider))
+      const notes = !coach && !noTools.has(toolKey) && (await supportsTools(provider))
         ? require('./note-tools.cjs').create({ onUsage, session, sources, readNotes, provider, signal: ctrl.signal, emit, propose, projects: archive ? archive.projectNames() : [], autoCreate: !!s.notes?.autoCreate })
         : null
       const go = (withWeb, withNotes) => {
-        const system = [buildSystem(s), withWeb ? WEB_RULES : '', withWeb && session ? WEB_PROJECT_RULES : ''].filter(Boolean).join('\n\n')
+        const system = [buildSystem(s, mode), withWeb ? WEB_RULES : '', withWeb && session ? WEB_PROJECT_RULES : ''].filter(Boolean).join('\n\n')
         const b = withWeb ? { ...base, onAnnotations } : base
         if (session) return knowledge.streamWithKnowledge({ session, base: { ...b, ...(withWeb ? { serverTools: webSearch.toolsFor } : {}) }, system, userText, emit, notes: withNotes ? notes : null })
         // Proje seçili değilken: yalnızca create_note; araç döngüsü kısa tutulur.

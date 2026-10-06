@@ -78,6 +78,9 @@ main{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
 aside.side{width:280px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;border-radius:16px;background:var(--panel)}
 .side-top{height:52px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 8px 0 14px}
 .side>.seg{flex-shrink:0;margin:0 12px}
+/* mod geçişi (Sohbet / Yaşam Koçu): bölüm seçicinin üstünde, dar pencerede de görünür */
+.side>.seg.mode{margin-bottom:8px}
+.seg.mode button[aria-selected=true]{color:var(--accent)}
 .side .search{flex-shrink:0;margin:10px 12px 0}
 .hist{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;padding:0 8px 8px}
 .grp-h{flex-shrink:0;padding:16px 8px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--mute)}
@@ -464,6 +467,12 @@ button.qz-opt:hover .qz-l{background:var(--select)}
 /* ---- ayarlar ---- */
 .modal-bg{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,12,14,.62)}
 .modal{width:min(860px,100%);height:min(640px,100%);display:flex;padding:8px;overflow:hidden;border-radius:20px;background:var(--bg);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+/* koç moduna ilk girişteki uyarı */
+.cn-dlg{width:min(460px,100%);max-height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:24px;border-radius:20px;background:var(--bg);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.cn-dlg h2{margin:-8px 0 0;font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.02em}
+.cn-dlg .frow{padding:10px 14px}.cn-dlg .fl.col{gap:3px}
+.cn-dlg .row-btns{justify-content:flex-end}
+.cn-dlg .pill{height:32px;padding:0 16px;border-radius:16px;font-weight:600}
 .set-nav{width:204px;flex-shrink:0;display:flex;flex-direction:column;gap:1px;padding:8px;border-radius:12px;background:var(--panel)}
 .set-nav .label{padding:8px 8px 10px}
 .set-main{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -514,6 +523,8 @@ select.fin{text-align-last:right}
   .side-big{display:block;margin:0 0 4px;font-size:34px;line-height:1.1;font-weight:700;letter-spacing:-.03em}
   .tb{width:44px;height:44px;border-radius:50%;background:var(--surface)}
   .side>.seg,.side-foot{display:none}
+  .side>.seg.mode{display:grid;margin:12px 16px 0;padding:3px;border-radius:14px;background:var(--panel)}
+  .side>.seg.mode button{height:36px;border-radius:11px;font-size:15px}
   .side .search{height:44px;margin:10px 16px 0;gap:8px;padding:0 14px;border-radius:22px;background:var(--panel);font-size:16px}
   .side .search .kbd{display:none}
   .hist{margin-bottom:96px;padding:0 16px 12px;font-size:16px}
@@ -524,7 +535,7 @@ select.fin{text-align-last:right}
   .grp .row.active::before,.grp .row.active+.row::before{display:none}
   .row .time{font-size:14px}
   .row.nrow{min-height:66px;padding:9px 16px}.nr-s{font-size:14px}
-  .tabbar{position:absolute;left:20px;right:20px;bottom:20px;height:64px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:4px;border-radius:32px;background:var(--pop);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .tabbar{position:absolute;left:20px;right:20px;bottom:20px;height:64px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:4px;border-radius:32px;background:var(--pop);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.45)}
   .tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:28px;font-size:10.5px;font-weight:600;color:var(--fg2)}
   .tabbar button[aria-current=page]{background:var(--select);color:var(--accent)}
   header.top{height:68px;gap:8px;padding:0 12px 0 16px}
@@ -547,6 +558,7 @@ select.fin{text-align-last:right}
   .rz-ctl-wrap .pj-pop{top:62px;bottom:auto;left:8px;right:8px;width:auto}
   .nt-page{padding:20px 16px 32px}.nt-bar-wrap{padding:0 12px 12px}
   .modal-bg{padding:0}
+  .modal-bg.pad{padding:16px}
   .qz-dlg{width:100%;height:100%;border:0;border-radius:0}.mac .qz-dlg{padding-top:44px}
   .qz-in{height:44px;border-radius:22px;font-size:16px}.qz-ta,.qz-opt{font-size:16px}.qz-opt{min-height:50px}
   .qz-df{flex-direction:column;align-items:stretch;gap:10px;padding:10px 14px 14px}.qz-df .pill,.qz-nav .pill{height:40px;border-radius:20px}
